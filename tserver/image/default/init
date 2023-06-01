@@ -1,0 +1,30 @@
+#! /bin/sh
+
+if echo $SERVERS | grep -Eiq 'httpd|all'; then
+	test -n "$HTTPD_PARAMS" || HTTPD_PARAMS="-c 'cgi-bin/*' -d /root/www -u root"
+	echo "mini_httpd $HTTPD_PARAMS"
+	mini_httpd $HTTPD_PARAMS &
+fi
+
+if echo $SERVERS | grep -Eiq 'ctraffic|all'; then
+	test -n "$CTRAFFIC_PARAMS" || CTRAFFIC_PARAMS="-udp -address [::]:5003"
+	echo "ctraffic -server $CTRAFFIC_PARAMS"
+	ctraffic -server $CTRAFFIC_PARAMS &
+fi
+
+if echo $SERVERS | grep -Eiq 'mconnect|all'; then
+	test -n "$MCONNECT_PARAMS" || MCONNECT_PARAMS="-udp -address [::]:5001"
+	echo "mconnect -server $MCONNECT_PARAMS"
+	mconnect -server $MCONNECT_PARAMS &
+fi
+
+if echo $SERVERS | grep -Eiq 'kahttp|all'; then
+	cert=$(dirname $(which kahttp))/cert
+	mv $cert /etc
+	test -n "$KAHTTP_PARAMS" || KAHTTP_PARAMS="-address :8080 -https_addr :8443"
+	echo "kahttp $KAHTTP_PARAMS"
+	kahttp -server -https_cert /etc/cert/server.crt \
+		-https_key /etc/cert/server.key $KAHTTP_PARAMS &
+fi
+
+tail -f /dev/null
