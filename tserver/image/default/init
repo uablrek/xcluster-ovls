@@ -27,4 +27,23 @@ if echo $SERVERS | grep -Eiq 'kahttp|all'; then
 		-https_key /etc/cert/server.key $KAHTTP_PARAMS &
 fi
 
+if echo $SERVERS | grep -Eiq 'sctp|all'; then
+	if which sctpt > /dev/null; then
+		# Create a comma separated list of global addresses on eth0
+		# Both ipv4 and ipv6
+		for a in $(ip -json addr show dev eth0 | \
+			jq -r '.[]|select(.addr_info)|.addr_info[]|select(.scope == "global")|.local'); do
+			if test -n "$addr"; then
+				addr="$addr,$a"
+			else
+				addr=$a
+			fi
+		done
+		echo "sctpt server --laddr=$addr"
+		sctpt server --addr=$addr &
+	else
+		echo "Requested but not installed [sctpt]"
+	fi
+fi
+
 tail -f /dev/null

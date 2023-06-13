@@ -25,7 +25,7 @@ test -n "$1" || help
 echo "$1" | grep -qi "^help\|-h" && help
 
 log() {
-	echo "$prg: $*" >&2
+	echo "$*" >&2
 }
 dbg() {
 	test -n "$__verbose" && echo "$prg: $*" >&2
@@ -44,7 +44,7 @@ findf() {
 cmd_env() {
 
 	test -n "$__tag" || __tag="docker.io/uablrek/tserver:latest"
-
+	
 	if test "$cmd" = "env"; then
 		set | grep -E '^(__.*)='
 		return 0
@@ -55,15 +55,17 @@ cmd_env() {
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
 }
-##   mkimage [--tag=docker.io/uablrek/tserver:latest]
-##     Create the docker image and upload it to the local registry.
+##   mkimage [--upload] [--tag=docker.io/uablrek/tserver:latest]
+##     Create the docker image (requires xcluster). Optionally upload
+##     to the local registry
 cmd_mkimage() {
 	cmd_env
 	local imagesd=$($XCLUSTER ovld images)
-	$imagesd/images.sh mkimage --force --upload --tag=$__tag $dir/image
+	$imagesd/images.sh mkimage --force --upload=$__upload --tag=$__tag $dir/image
 }
 ##   install_servers <dst>
-##     Install mconnect, ctraffic, kahttp servers
+##     Install mconnect, ctraffic, kahttp servers. The sctpt setver is
+##     installed if it's in the path
 cmd_install_servers() {
 	test -n "$1" || die "No destination dir"
 	local dst="$1"
@@ -87,6 +89,12 @@ cmd_install_servers() {
 	findf $p.gz
 	gzip -dc $f > $dst/$p
 	chmod a+x $dst/$p
+	if which sctpt > /dev/null; then
+		log "Installing sctpt ..."
+		cp $(which sctpt) $dst
+	else
+		log "Not available: sctpt"
+	fi
 }
 ##
 ## Tests;
