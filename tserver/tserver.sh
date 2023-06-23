@@ -111,7 +111,7 @@ cmd_test() {
 		shift
 		test_$t $@
 	else
-		test_basic
+		test_connectivity
 	fi		
 
 	now=$(date +%s)
@@ -120,25 +120,28 @@ cmd_test() {
 ##   test start_empty
 ##     Start empty cluster
 test_start_empty() {
+	test -n "$__nrouters" || __nrouters=1
 	export xcluster_PREFIX=$PREFIX
 	xcluster_start tserver $@
 	otc 1 check_namespaces
 	otc 1 check_nodes
 	otcr vip_routes
 }
-##   test start
+##   test start [--replicas=4]
 ##     Start cluster with ovl functions
 test_start() {
 	test_start_empty $@
-	otc 1 start_tserver
+	otcwp conntrack_size
+	otcr "conntrack_size 40000"
+	otc 1 "start_tserver --replicas=$__replicas"
+	otc 1 create_svc
 }
-##   test connectivity (default)
+##   test connectivity [--replicas=4] (default)
 ##     Test external connectivity
-test_basic() {
+test_connectivity() {
 	tlog "=== Test external connectivity"
 	test_start $@
-	otc 1 create_svc
-	otc 201 external_traffic
+	otc 201 "external_traffic --replicas=$__replicas"
 	xcluster_stop
 }
 

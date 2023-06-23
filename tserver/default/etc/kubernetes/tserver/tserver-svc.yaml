@@ -19,6 +19,8 @@ spec:
     name: kahttp
   - port: 8443
     name: kahttps
+  - port: 23
+    name: telnet
 ---
 apiVersion: v1
 kind: Service

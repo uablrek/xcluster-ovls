@@ -14,7 +14,7 @@ tmp=/tmp/${prg}_$$
 
 . /etc/profile
 test -n "$DOMAIN" || DOMAIN=xcluster
-test -n "$PREFIX" || PREFIX=1000::1
+test -n "$PREFIX" || PREFIX=fd00:
 yamld=/etc/kubernetes/tserver
 
 die() {
@@ -51,8 +51,10 @@ cmd_tcase_vip_routes() {
 ##     Start tserver PODs
 cmd_tcase_start_tserver() {
 	tcase "Start tserver"
+	test -n "$__replicas" &&
+		sed -i -e "s,replicas: 4,replicas: $__replicas," $yamld/tserver.yaml
 	kubectl create -f $yamld/tserver.yaml
-	test_daemonset tserver 180
+	test_deployment tserver 180
 }
 ##   tcase_create_svc
 ##     Create services and assign lb-ip's
@@ -71,8 +73,22 @@ cmd_tcase_external_traffic() {
 	external_traffic [$PREFIX:10.0.0.52]:5001
 }
 external_traffic() {
-	tlog "Traffic to; $1"
-	do_mconnect $1 || tdie "mconnect to; $1"
+	if test -n "$__replicas"; then
+		tlog "Traffic to; $1, targets=$__replicas"
+		local nconn=$((__replicas * 25))
+		tex do_mconnect $1 $nconn $__replicas 80 || tdie "mconnect to; $1"
+	else
+		tlog "Traffic to; $1"
+		tex do_mconnect $1 || tdie "mconnect to; $1"
+	fi
+}
+##   tcase_conntrack_size [size]
+##     Set the conntrack table size. Default 20000
+cmd_tcase_conntrack_size() {
+	local s=20000
+	test -n "$1" && s=$1
+	tcase "Set conntrack size to $s"
+	echo $s > /proc/sys/net/nf_conntrack_max
 }
 
 . /usr/lib/xctest

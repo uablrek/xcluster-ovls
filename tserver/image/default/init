@@ -46,4 +46,8 @@ if echo $SERVERS | grep -Eiq 'sctp|all'; then
 	fi
 fi
 
+if echo $SERVERS | grep -Eiq 'telnet|all'; then
+	telnetd -l /bin/sh
+fi
+
 tail -f /dev/null
