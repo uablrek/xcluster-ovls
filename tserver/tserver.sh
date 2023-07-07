@@ -132,7 +132,9 @@ test_start_empty() {
 test_start() {
 	test_start_empty $@
 	otcwp conntrack_size
-	otcr "conntrack_size 40000"
+	test -n "$__replicas" || __replicas=4
+	local ctsize=$((__replicas * 4000 + 20000))
+	otcr "conntrack_size $ctsize"
 	otc 1 "start_tserver --replicas=$__replicas"
 	otc 1 create_svc
 }

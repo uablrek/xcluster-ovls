@@ -69,10 +69,11 @@ cmd_tcase_create_svc() {
 ##     Test external connectivity with mconnect
 cmd_tcase_external_traffic() {
 	tcase "Test external connectivity with mconnect"
-	external_traffic 10.0.0.52:5001
 	external_traffic [$PREFIX:10.0.0.52]:5001
+	external_traffic 10.0.0.52:5001
 }
 external_traffic() {
+	pushv 30 6 5
 	if test -n "$__replicas"; then
 		tlog "Traffic to; $1, targets=$__replicas"
 		local nconn=$((__replicas * 25))

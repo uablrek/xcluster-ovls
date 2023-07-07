@@ -4,18 +4,21 @@ if echo $SERVERS | grep -Eiq 'httpd|all'; then
 	test -n "$HTTPD_PARAMS" || HTTPD_PARAMS="-c 'cgi-bin/*' -d /root/www -u root"
 	echo "mini_httpd $HTTPD_PARAMS"
 	mini_httpd $HTTPD_PARAMS &
+	children="$! $children"
 fi
 
 if echo $SERVERS | grep -Eiq 'ctraffic|all'; then
 	test -n "$CTRAFFIC_PARAMS" || CTRAFFIC_PARAMS="-udp -address [::]:5003"
 	echo "ctraffic -server $CTRAFFIC_PARAMS"
 	ctraffic -server $CTRAFFIC_PARAMS &
+	children="$! $children"
 fi
 
 if echo $SERVERS | grep -Eiq 'mconnect|all'; then
 	test -n "$MCONNECT_PARAMS" || MCONNECT_PARAMS="-udp -address [::]:5001"
 	echo "mconnect -server $MCONNECT_PARAMS"
 	mconnect -server $MCONNECT_PARAMS &
+	children="$! $children"
 fi
 
 if echo $SERVERS | grep -Eiq 'kahttp|all'; then
@@ -25,6 +28,7 @@ if echo $SERVERS | grep -Eiq 'kahttp|all'; then
 	echo "kahttp $KAHTTP_PARAMS"
 	kahttp -server -https_cert /etc/cert/server.crt \
 		-https_key /etc/cert/server.key $KAHTTP_PARAMS &
+	children="$! $children"
 fi
 
 if echo $SERVERS | grep -Eiq 'sctp|all'; then
@@ -41,6 +45,7 @@ if echo $SERVERS | grep -Eiq 'sctp|all'; then
 		done
 		echo "sctpt server --laddr=$addr"
 		sctpt server --addr=$addr &
+		children="$! $children"
 	else
 		echo "Requested but not installed [sctpt]"
 	fi
@@ -48,6 +53,15 @@ fi
 
 if echo $SERVERS | grep -Eiq 'telnet|all'; then
 	telnetd -l /bin/sh
+	children="$! $children"
 fi
 
-tail -f /dev/null
+echo "Child PIDs: $children"
+_term() { 
+  echo "Caught SIGTERM signal!" 
+  kill -TERM "$children"
+}
+
+trap _term SIGTERM
+wait
+

@@ -12,4 +12,13 @@ Servers:
 * [sctpt](https://github.com/Nordix/xcluster/tree/master/ovl/sctp#the-sctpt-test-program)
 
 Start of server is controlled by the `SERVERS` environment
-variable. Check the manifests in `default/`.
+variable. Please check the manifest in [default/](
+default/etc/kubernetes/tserver/tserver.yaml).
+
+
+## Tests
+
+```
+./tserver.sh               # Help printout
+./tserver.sh test > $log   # Run default test 
+```
