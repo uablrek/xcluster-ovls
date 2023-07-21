@@ -57,11 +57,12 @@ if echo $SERVERS | grep -Eiq 'telnet|all'; then
 fi
 
 echo "Child PIDs: $children"
-_term() { 
-  echo "Caught SIGTERM signal!" 
-  kill -TERM "$children"
-}
+test -z "$children" && tail -f /dev/null	
 
+_term() {
+	echo "Caught SIGTERM signal!" 
+	kill -TERM $children
+}
 trap _term SIGTERM
 wait
 
