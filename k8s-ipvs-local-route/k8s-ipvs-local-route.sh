@@ -79,7 +79,7 @@ test_start_empty() {
 		tlog "Using TOPOLOGY=$TOPOLOGY"
 		. $($XCLUSTER ovld network-topology)/$TOPOLOGY/Envsettings
 	fi
-	xcluster_start network-topology . $@
+	xcluster_start network-topology tserver . $@
 	otc 1 check_namespaces
 	otc 1 check_nodes
 	otcr vip_routes

@@ -51,10 +51,10 @@ cmd_tcase_vip_routes() {
 ##     Start application servers and a svc
 cmd_tcase_start_servers() {
 	tcase "Start application servers and a svc"
-	$kubectl create -f $yamld/alpine.yaml || tdie alpine
+	$kubectl create -f /etc/kubernetes/tserver/tserver.yaml || tdie tserver
 	$kubectl create -f $yamld/svc.yaml || tdie svc
-	assign-lb-ip -svc alpine -ip 10.0.0.0,$PREFIX:10.0.0.0
-	test_deployment alpine 60
+	assign-lb-ip -svc tserver -ip 10.0.0.0,$PREFIX:10.0.0.0
+	test_deployment tserver 60
 }
 ##   tcase_default_route <target>
 ##     Set a (non-ECMP) default route

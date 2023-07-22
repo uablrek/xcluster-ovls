@@ -1,11 +1,28 @@
 # Xcluster/ovl - k8s-ipvs-local-route
 
-Set local routes for ClusterIP and LoadBalancerIP to `kube-ipvs0`
-instead of assigning addresses
+Asymmetric routing, and attempt to set a local route for
+ClusterIP-CIDR instead of assigning addresses to `kube-ipvs0`
 
-Keyword: source-based route
+The usual way to get traffic to ipvs is to have the load-balancer
+address (VIP) assigned to a local interface. This causes a great deal
+of pain, and what you would *really* wish for is a iptables/nftables
+target, like `-j IPVS`.
 
-## Problem with souce based routes
+In K8s all ClusterIPs and loadBalancerIPs are assigned to `kube-ipvs0`
+which is a Linux "dummy interface", and is always DOWN. Now, it turns
+out that addresses doesn't reall have to be assigned, but it's
+sufficient with a local route in the `local` routing table.
+
+The aim is to replace all assigned ClusterIPs with a single rule like:
+
+```
+ip route add local <ClusterIP-CIDR> dev kube-ipvs0 scope host src <node-ip>
+```
+
+Keywords: source-based route, asymmetric routing
+
+
+## Asymmetric Routing
 
 Outgoing packets are (usually) sent via the "default route". But when
 incoming packets can arrive via different routers, or different
@@ -35,6 +52,18 @@ tcpdump -ni eth1 port 5001
 # On vm-221
 mconnect -address 10.0.0.0:5001 -nconn 4
 ```
+
+To avoid this problem you can use the [Cilium](https://cilium.io/)
+CNI-plugin with `kube-proxy` replacement. It sends return packets beck
+to the GW it came from, regardless of the default route.
+
+A fix for the problem can also be found in [metallb-node-route-agent](
+https://github.com/travisghansen/metallb-node-route-agent).
+
+
+
+
+### Avoid asymmetric routing with route configuration
 
 The problem *can* be solved with a direct route:
 
@@ -72,6 +101,7 @@ Unfortunately this comes with some drawbacks like:
 * Source-based policy routes only work with proxy-mode=ipvs
 * Requests to the OaM loadBalancerIP's does not work from the main
   netns on K8s nodes
+* Connect to loadBalancerIP's from within PODs fails
 
 The problem with proxy-mode=iptables is that the rule is checked
 *before* the (reversed) DNAT POD-IP -> loadBalancerIP, so the rule is
@@ -93,13 +123,5 @@ mconnect -address 10.0.0.0:5001 -nconn 4  # Still works
 ```
 
 This "fix" can't be applied by the node owner, but requires a change
-of the `kube-proxy` in K8s.
-
-
-### CNI-plugin dependency
-
-The exact behaivor is dependent on the CNI-plugin. For instance with
-[Cilium](https://cilium.io/) with `kube-proxy` replacement, none of the
-above is needed. Everything works out-of-the-box by some eBPF magic.
-
+of the `kube-proxy` in K8s, like the one local rule described earlier.
 
