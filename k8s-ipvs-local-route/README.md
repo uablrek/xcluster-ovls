@@ -43,9 +43,9 @@ network. Return traffic for requests coming from the OaM network
 
 Manual test of asymmetric routing:
 ```
-./k8s-ipvs-local-route.sh test start_policyroute > $log
+./k8s-ipvs-local-route.sh test start_asymmetric > $log
 # OR:
-xcadmin k8s_test --cni=calico k8s-ipvs-local-route start_policyroute > $log
+xcadmin k8s_test --cni=calico k8s-ipvs-local-route start_asymmetric > $log
 # (or another CNI-plugin: cilium, flannel, antrea)
 # On vm-201 and vm-202
 tcpdump -ni eth1 port 5001
@@ -54,7 +54,7 @@ mconnect -address 10.0.0.0:5001 -nconn 4
 ```
 
 To avoid this problem you can use the [Cilium](https://cilium.io/)
-CNI-plugin with `kube-proxy` replacement. It sends return packets beck
+CNI-plugin with `kube-proxy` replacement. It sends return packets back
 to the GW it came from, regardless of the default route.
 
 A fix for the problem can also be found in [metallb-node-route-agent](
@@ -84,6 +84,7 @@ packets *from* the loadBalancerIP's of the OaM services on the cluster
 are routed to the GW on the OaM network.
 
 ```
+# On vm-002
 ip route del 192.168.2.221/32  # (if necessary)
 ip rule add from 10.0.0.0/32 table 44
 ip route add default via 192.168.1.202 table 44
@@ -125,3 +126,47 @@ mconnect -address 10.0.0.0:5001 -nconn 4  # Still works
 This "fix" can't be applied by the node owner, but requires a change
 of the `kube-proxy` in K8s, like the one local rule described earlier.
 
+
+
+## Replace address with local route
+
+This is a manual test, a PoC if you like. We set the `kube-proxy`
+syncPeriod to 15m, but check anyway that the addresses are not
+re-assigned.
+
+```
+./k8s-ipvs-local-route.sh test start > $log
+
+# On vm-002
+pod=(pod on vm-002)
+svc4=$(kubectl get svc tserver -o json | jq -r .spec.clusterIPs[] | grep -v :)
+svc6=$(kubectl get svc tserver -o json | jq -r .spec.clusterIPs[] | grep :)
+kubectl exec $pod -- mconnect -address $svc4:5001 -nconn 4
+kubectl exec $pod -- mconnect -address [$svc6]:5001 -nconn 4
+kubectl exec $pod -- mconnect -address 10.0.0.0:5001 -nconn 4
+kubectl exec $pod -- mconnect -address [fd00::10.0.0.0]:5001 -nconn 4
+# On vm-221
+mconnect -address 10.0.0.0:5001 -nconn 4
+mconnect -address [fd00::10.0.0.0]:5001 -nconn 4
+
+# Check on vm-002
+ip addr show dev kube-ipvs0
+ip ro show table local
+ip -6 ro show table local
+
+# On vm-002: remove addresses and add local routes
+ip addr flush dev kube-ipvs0
+ip link set up dev kube-ipvs0
+ip route replace local 10.0.0.0/24 dev kube-ipvs0 scope host src 192.168.1.2
+ip route replace local 12.0.0.0/16 dev kube-ipvs0 scope host src 192.168.1.2
+ip -6 route replace local fd00::10.0.0.0/120 dev kube-ipvs0 scope host src fd00::192.168.1.2
+ip -6 route replace local fd00:4000::/112 dev kube-ipvs0 scope host src fd00::192.168.1.2
+# re-test all connects
+```
+
+Test with a local kube-proxy:
+```
+export LOCAL_PROXY=yes
+export xcluster_SERVICE_CIDRS="fd00:4000::/112,12.0.0.0/16"
+./k8s-ipvs-local-route.sh test start > $log
+```

@@ -90,14 +90,16 @@ test_start() {
 	export __ntesters=1
 	export __nrouters=2
 	test_start_empty $@
+	# If we start too early all server may get on the same node
+	tcase "Sleep 4s"; sleep 4    
 	otc 1 start_servers
+	otcr "vip_route 192.168.1.2"
 }
-##   test start_policyroute
-##     Start with a souce based policy route to vm-202
-test_start_policyroute() {
+##   test start_asymmetric
+##     Start with asymmetric routing to vm-002
+test_start_asymmetric() {
 	test_start $@
 	otcwp "default_route 192.168.1.201"
-	otcr "vip_route 192.168.1.2"
 	otc 221 "default_route 192.168.2.202"
 }
 
