@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lb-sourceranges
+spec:
+  loadBalancerSourceRanges:
+  - "192.168.2.0/24"
+  - "fd00::c0a8:200/120"
+  ipFamilyPolicy: RequireDualStack
+  selector:
+    app: tserver
+  type: LoadBalancer
+  allocateLoadBalancerNodePorts: false
+  ports:
+  - port: 5001
+    name: mconnect

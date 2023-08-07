@@ -136,16 +136,33 @@ test_start() {
 	local ctsize=$((__replicas * 4000 + 20000))
 	otcr "conntrack_size $ctsize"
 	otc 1 "start_tserver --replicas=$__replicas"
-	otc 1 create_svc
 }
 ##   test connectivity [--replicas=4] (default)
 ##     Test external connectivity
 test_connectivity() {
 	tlog "=== Test external connectivity"
 	test_start $@
-	otc 201 "external_traffic --replicas=$__replicas"
+	otc 1 create_svc
+	otc 201 "traffic --replicas=$__replicas 10.0.0.52"
 	xcluster_stop
 }
+##   test lb_sourceranges
+##     Test to resrict external access using loadBalancerSourceRanges
+test_lb_sourceranges() {
+	tlog "=== Test to resrict external access using loadBalancerSourceRanges"
+	# "fd00:" is used in the svc manifest and we need a tester
+	__ntesters=1
+	PREFIX=fd00:
+	test_start $@
+	otcr "vip_route 192.168.1.2"
+	otc 1 "create_1svc lb-sourceranges 10.0.0.10"
+	otc 221 "traffic --replicas=$__replicas 10.0.0.10"
+	otc 201 "deny_external_traffic 10.0.0.10"
+	otc 2 "traffic --replicas=$__replicas lb-sourceranges.default.svc.xcluster"
+	otc 2 "deny_external_traffic 10.0.0.10"
+	xcluster_stop
+}
+
 
 ##
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
