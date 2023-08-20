@@ -1,0 +1,45 @@
+#! /bin/sh
+. /etc/profile
+test -n "$LAST_NODE" || echo "LAST_NODE=190" >> /etc/profile
+test -n "$PREFIX" || echo "PREFIX=fd00:" >> /etc/profile
+
+die() {
+	echo "$@"
+	exit 1
+}
+
+# Disable default K8s start
+mkdir -p /etc/rcS.d
+cd /etc/init.d
+for n in 12etcd.rc 20bridge.rc 28private-reg.rc 30kube-prep.rc \
+	31kube-master.rc 32cri-plugin.rc 32kube-node.rc 90k8s-hook.rc; do
+	if test -x $n; then
+		mv $n /etc/rcS.d
+		echo '#! /bin/true' > $n
+		chmod a+x $n
+	fi
+done
+
+# Add a HA etcd tier
+test -n "$ETCD_VMS" || die "No etcd VMs"
+ln -sf /etc/rcS.d/etcd.rc /etc/init.d/12etcd.rc
+
+# Limit the K8s nodes
+sed -i -E 's,-le 200,-le $LAST_NODE,' /etc/rcS.d/*
+
+# Make K8s masters use all etcd servers
+for n in $ETCD_VMS; do
+	etcd_servers="$etcd_servers,http://192.168.1.$n:2379"
+done
+etcd_servers=$(echo $etcd_servers | sed -e 's/^,//')
+sed -i -e "s!http://192.168.1.1:2379!$etcd_servers!" /etc/rcS.d/31kube-master.rc
+
+
+test "$K8S_DISABLE" = "yes" && exit 0
+# Re-enable the K8s startup
+cd /etc/init.d
+for n in 20bridge.rc 28private-reg.rc 30kube-prep.rc \
+	31kube-master.rc 32cri-plugin.rc 32kube-node.rc 90k8s-hook.rc; do
+	rm -f $n
+	ln -s /etc/rcS.d/$n .
+done
