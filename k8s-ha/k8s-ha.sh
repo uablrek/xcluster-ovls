@@ -28,13 +28,11 @@ log() {
 	echo "$*" >&2
 }
 
-## Commands;
-##
-
 ##   env
 ##     Print environment.
 cmd_env() {
-	test -n "$xcluster_ETCD_VMS" || xcluster_ETCD_VMS="193"
+	test -n "$xcluster_ETCD_VMS" || export xcluster_ETCD_VMS="193"
+	test -n "$xcluster_LB_VMS" || export xcluster_LB_VMS="191"
 	export xcluster_ETCD_VMS
 	test -n "$__cni" || __cni=bridge
 	if test "$cmd" = "env"; then
@@ -49,13 +47,11 @@ cmd_env() {
 	eval $($XCLUSTER env)
 }
 
-
 ##
 ## Tests;
 ##   test [--xterm] [--no-stop] test <test-name>  [ovls...] > $log
 ##   test [--xterm] [--no-stop] > $log   # default test
 ##     Exec tests
-##
 cmd_test() {
 	cmd_env
 	start=starts
@@ -84,16 +80,16 @@ test_start_empty() {
 		. $($XCLUSTER ovld network-topology)/$TOPOLOGY/Envsettings
 	fi
 	export xcluster___cni=$__cni
-	xcluster_start network-topology k8s-cni-$__cni . $@
+	xcluster_start network-topology haproxy k8s-cni-$__cni . $@
 }
 ##   test start
 ##     Start cluster
 test_start() {
 	test $__nvm -lt 3 && die "Must have >=3 VMs"
 	test_start_empty $@
-	$XCLUSTER scaleout $xcluster_ETCD_VMS
-	tcase "VM connectivity; $xcluster_ETCD_VMS"
-	tex check_vm $xcluster_ETCD_VMS || tdie
+	$XCLUSTER scaleout $xcluster_ETCD_VMS $xcluster_LB_VMS
+	tcase "VM connectivity; $xcluster_ETCD_VMS $xcluster_LB_VMS"
+	tex check_vm $xcluster_ETCD_VMS $xcluster_LB_VMS || tdie
 	if test "$xcluster_K8S_DISABLE" != "yes"; then
 		otc 1 check_namespaces
 		otc 1 check_nodes

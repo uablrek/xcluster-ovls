@@ -16,6 +16,13 @@ free VMs for the load-balancer(s).
 
 <img src="vm-setup.svg" width="85%" />
 
+There are many blog posts that describe how to setup K8s-HA. They are
+almosts always repeating what's already described in K8s
+documentation. The [kubadam High Availability Considerations](
+https://github.com/kubernetes/kubeadm/blob/main/docs/ha-considerations.md)
+seems to be a good place to start.
+
+
 
 ## Cluster start
 

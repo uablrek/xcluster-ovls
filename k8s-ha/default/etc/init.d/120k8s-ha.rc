@@ -24,6 +24,10 @@ done
 test -n "$ETCD_VMS" || die "No etcd VMs"
 ln -sf /etc/rcS.d/etcd.rc /etc/init.d/12etcd.rc
 
+# Re-direct K8s API access to the load-balancer
+test -n "$KUBECONFIG" || KUBECONFIG=/etc/kubernetes/kubeconfig.token
+sed -i -e 's,192.168.1.1,192.168.1.191,' $KUBECONFIG
+
 # Limit the K8s nodes
 sed -i -E 's,-le 200,-le $LAST_NODE,' /etc/rcS.d/*
 
