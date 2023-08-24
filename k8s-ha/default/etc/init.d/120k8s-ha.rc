@@ -38,7 +38,6 @@ done
 etcd_servers=$(echo $etcd_servers | sed -e 's/^,//')
 sed -i -e "s!http://192.168.1.1:2379!$etcd_servers!" /etc/rcS.d/31kube-master.rc
 
-
 test "$K8S_DISABLE" = "yes" && exit 0
 # Re-enable the K8s startup
 cd /etc/init.d

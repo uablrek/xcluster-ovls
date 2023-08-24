@@ -86,6 +86,7 @@ test_start_empty() {
 ##     Start cluster
 test_start() {
 	test $__nvm -lt 3 && die "Must have >=3 VMs"
+	export xcluster_MASTERS=vm-001,vm-002,vm-003
 	test_start_empty $@
 	$XCLUSTER scaleout $xcluster_ETCD_VMS $xcluster_LB_VMS
 	tcase "VM connectivity; $xcluster_ETCD_VMS $xcluster_LB_VMS"
