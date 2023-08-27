@@ -21,6 +21,8 @@ spec:
     name: kahttps
   - port: 23
     name: telnet
+  - port: 5004
+    name: nc
 ---
 apiVersion: v1
 kind: Service
@@ -32,12 +34,16 @@ spec:
     app: tserver
   type: LoadBalancer
   allocateLoadBalancerNodePorts: false
+  #externalTrafficPolicy: Local
   ports:
   - port: 5001
     protocol: UDP
     name: mconnect
   - port: 5003
     name: ctraffic
+    protocol: UDP
+  - port: 5004
+    name: nc
     protocol: UDP
 ---
 apiVersion: v1
@@ -54,3 +60,6 @@ spec:
   - port: 6000
     protocol: SCTP
     name: sctpt
+  - port: 6004
+    protocol: SCTP
+    name: ncat

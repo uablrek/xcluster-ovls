@@ -9,7 +9,7 @@ prg=$(basename $0)
 dir=$(dirname $0); dir=$(readlink -f $dir)
 me=$dir/$prg
 tmp=/tmp/${prg}_$$
-test -n "$PREFIX" || PREFIX=1000::1
+test -n "$PREFIX" || PREFIX=fd00:
 
 die() {
     echo "ERROR: $*" >&2
@@ -137,10 +137,16 @@ test_start() {
 	otcr "conntrack_size $ctsize"
 	otc 1 "start_tserver --replicas=$__replicas"
 }
+##   test start_narrow_svc [--replicas=4]
+##     Start cluster with svc's and VIP route to vm-002
+test_start_narrow_svc() {
+	test_start $@
+	otc 1 create_svc
+	otcr "vip_route 192.168.1.2"
+}
 ##   test connectivity [--replicas=4] (default)
 ##     Test external connectivity
 test_connectivity() {
-	tlog "=== Test external connectivity"
 	test_start $@
 	otc 1 create_svc
 	otc 201 "traffic --replicas=$__replicas 10.0.0.52"
@@ -152,7 +158,6 @@ test_lb_sourceranges() {
 	tlog "=== Test to resrict external access using loadBalancerSourceRanges"
 	# "fd00:" is used in the svc manifest and we need a tester
 	__ntesters=1
-	PREFIX=fd00:
 	test_start $@
 	otcr "vip_route 192.168.1.2"
 	otc 1 "create_1svc lb-sourceranges 10.0.0.10"

@@ -25,6 +25,7 @@ cp -R $dir/default/* $tmp
 
 x=$dir/tserver.sh
 $x install_servers $tmp/bin || die "install_servers"
+$XCLUSTER install_prog --dest=$tmp ncat
 
 cd $tmp
 tar cf "$1" *
