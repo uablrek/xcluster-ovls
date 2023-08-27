@@ -11,7 +11,7 @@ die() {
 hostname | grep -Eq 'vm-[0-9]+$' || die "Invalid hostname [$(hostname)]"
 i=$(hostname | cut -d- -f2 | sed -rE 's,^0*,,')
 
-echo ",$LB_VMS," | tr ' ' , | grep -q ",$i," || exit 0
+echo " $LB_VMS " | grep -Fq " $i " || exit 0
 
 test -n "$MASTERS" || MASTERS=vm-001
 

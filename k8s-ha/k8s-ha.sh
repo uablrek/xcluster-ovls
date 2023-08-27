@@ -28,16 +28,19 @@ log() {
 	echo "$*" >&2
 }
 
+## Commands:
 ##   env
 ##     Print environment.
 cmd_env() {
-	test -n "$xcluster_ETCD_VMS" || export xcluster_ETCD_VMS="193"
+	test -n "$xcluster_MASTERS" || export xcluster_MASTERS=vm-001,vm-002,vm-003
+	test -n "$xcluster_ETCD_VMS" || export xcluster_ETCD_VMS="193 194 195"
 	test -n "$xcluster_LB_VMS" || export xcluster_LB_VMS="191"
 	export xcluster_ETCD_VMS
 	test -n "$__cni" || __cni=bridge
 	if test "$cmd" = "env"; then
 		opts="cni|nvm"
-		set | grep -E "^(__($opts)|xcluster_ETCD_VMS)="
+		xvar="MASTERS|ETCD_VMS|K8S_DISABLE|LB_VMS|ETCD_FAMILY"
+		set | grep -E "^(__($opts)|xcluster_($xvar))="
 		return 0
 	fi
 
@@ -81,22 +84,55 @@ test_start_empty() {
 	fi
 	export xcluster___cni=$__cni
 	xcluster_start network-topology haproxy k8s-cni-$__cni . $@
+	$XCLUSTER scaleout $xcluster_ETCD_VMS $xcluster_LB_VMS
+	tcase "VM connectivity; $xcluster_ETCD_VMS $xcluster_LB_VMS"
+	tex check_vm $xcluster_ETCD_VMS $xcluster_LB_VMS || tdie
 }
 ##   test start
 ##     Start cluster
 test_start() {
 	test $__nvm -lt 3 && die "Must have >=3 VMs"
-	export xcluster_MASTERS=vm-001,vm-002,vm-003
 	test_start_empty $@
+	test "$xcluster_K8S_DISABLE" = "yes" && return 0
+
+	otc 1 check_namespaces
+	otc 1 check_nodes
+	otcr vip_routes
+	tcase "Taint master nodes [$xcluster_MASTERS]"
+	masters="$(echo $xcluster_MASTERS | tr , ' ')"
+	kubectl label nodes $masters node-role.kubernetes.io/control-plane=''
+	kubectl taint nodes $masters node-role.kubernetes.io/control-plane:NoSchedule
+}
+##   test start_ha
+##     Start a HA K8s cluster using the internal CNI-plugin. This is
+##     intended as a template for other ovls testing HA functions
+test_start_ha() {
+	export __nvm=7
+	export xcluster_MASTERS=vm-001,vm-002,vm-003
+	export xcluster_ETCD_VMS="193 194 195"
+	export xcluster_LB_VMS="191"
+	unset xcluster_K8S_DISABLE
+	xcluster_start network-topology haproxy . $@
+
 	$XCLUSTER scaleout $xcluster_ETCD_VMS $xcluster_LB_VMS
 	tcase "VM connectivity; $xcluster_ETCD_VMS $xcluster_LB_VMS"
 	tex check_vm $xcluster_ETCD_VMS $xcluster_LB_VMS || tdie
-	if test "$xcluster_K8S_DISABLE" != "yes"; then
-		otc 1 check_namespaces
-		otc 1 check_nodes
-		otcr vip_routes
-	fi
+
+	otc 1 check_namespaces
+	otc 1 check_nodes
+
+	tcase "Taint master nodes [$xcluster_MASTERS]"
+	masters="$(echo $xcluster_MASTERS | tr , ' ')"
+	kubectl label nodes $masters \
+		node-role.kubernetes.io/control-plane='' || tdie "label nodes"
+	kubectl taint nodes $masters \
+		node-role.kubernetes.io/control-plane:NoSchedule || tdie "taint nodes"
+
+	# By default "vip_routes" setup ECMP to all nodes, including
+	# control-plane. You might want to change that
+	otcr vip_routes
 }
+
 
 ##
 test -n "$__nvm" || export __nvm=7    # 3 masters + 4 workers

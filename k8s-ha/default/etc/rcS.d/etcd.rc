@@ -1,8 +1,6 @@
 #! /bin/sh
 . /etc/profile
-
 export PATH="/bin:/sbin:/usr/bin:/usr/sbin"
-
 die() {
 	echo "$@"
 	exit 1
@@ -11,14 +9,53 @@ die() {
 hostname | grep -Eq 'vm-[0-9]+$' || die "Invalid hostname [$(hostname)]"
 i=$(hostname | cut -d- -f2 | sed -rE 's,^0*,,')
 
+test -n "$ETCD_VMS" || exit 0
+export HOSTNAME=$(hostname)
+echo " $ETCD_VMS " | grep -qF " $i " || exit 0
+
+
+if test -z "$ETCD_CONFIG_FILE"; then
+	# This is the first start (as opposed to a VM reboot). Generate a
+	# config and initiate the cluster
+	myip=192.168.1.$i
+	myurl=http://$myip
+	any=0.0.0.0
+	test -n "$ETCD_FAMILY" || ETCD_FAMILY=$BASE_FAMILY
+	if test "$ETCD_FAMILY" = "IPv6"; then
+		myip=$PREFIX:192.168.1.$i
+		myurl=http://[$myip]
+		any=::
+	fi
+	tmpl=/etc/etcd.conf-template.yml
+	test -n "$PEER_URLS" || PEER_URLS=$myurl:2380
+	test -n "$CLIENT_URLS" || CLIENT_URLS=http://[$any]:2379
+	test -n "$ADVERTISE_CLIENT_URLS" || ADVERTISE_CLIENT_URLS=$myurl:2379
+	test -n "$ADVERTISE_URLS" || ADVERTISE_URLS=$myurl:2380
+	test -n "$INITIAL_CLUSTER" || INITIAL_CLUSTER=
+	if test -z "$INITIAL_CLUSTER"; then
+		for n in $ETCD_VMS; do
+			vm=$(printf "vm-%03d" $n)
+			url=http://192.168.1.$n
+			test "$BASE_FAMILY" = "IPv6" && \
+				url=url=http://[$PREFIX:192.168.1.$n]
+			init="$init,$vm=$url:2380"
+			INITIAL_CLUSTER=$(echo $init | sed -e 's!^,*!!')
+		done
+	fi
+	export PEER_URLS
+	export CLIENT_URLS
+	export ADVERTISE_CLIENT_URLS
+	export ADVERTISE_URLS
+	export INITIAL_CLUSTER
+	export ETCD_CONFIG_FILE=/etc/etcd-generated.conf.yaml
+	echo "export ETCD_CONFIG_FILE=$ETCD_CONFIG_FILE" >> /etc/profile
+	envsubst < $tmpl > $ETCD_CONFIG_FILE
+fi
+
+
 echo "export ETCDCTL_API=3" >> /etc/profile
-
-echo ",$ETCD_VMS," | tr ' ' , | grep -q ",$i," || exit 0
-
-sed -i -e "s,HOSTNAME,$(hostname)," /etc/etcd.conf.yml
-sed -i -e "s,vm-001,$(hostname)," /etc/etcd.conf.yml
-sed -i -e "s,192.168.1.x,192.168.1.$i,g" /etc/etcd.conf.yml
-
 export ETCDCTL_API=3
-etcd --config-file /etc/etcd.conf.yml > /var/log/etcd.log 2>&1 &
-
+etcd > /var/log/etcd.log 2>&1 &
+sleep 1
+sed -i -e 's,initial-cluster-state: new,initial-cluster-state: existing,' \
+	$ETCD_CONFIG_FILE

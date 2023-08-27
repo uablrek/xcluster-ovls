@@ -22,6 +22,13 @@ documentation. The [kubadam High Availability Considerations](
 https://github.com/kubernetes/kubeadm/blob/main/docs/ha-considerations.md)
 seems to be a good place to start.
 
+As usual, check the ovl script help printout for functions, tests and
+start options:
+
+```
+./k8s-ha env
+./k8s-ha
+```
 
 
 ## Cluster start
@@ -53,3 +60,18 @@ The K8s start can be disabled by setting `K8S_DISABLE=yes`:
 xcluster_K8S_DISABLE=yes ./k8s-ha.sh test start > $log
 ```
 Etcd is still started.
+
+
+## Test ETCD
+
+Manual testing:
+```
+#export xcluster_ETCD_FAMILY=IPv6
+xcluster_K8S_DISABLE=yes ./k8s-ha.sh test --nvm=0 start_empty > $log
+# On a etcd VM
+etcdctl member list -w table
+export ETCDCTL_ENDPOINTS=192.168.1.193:2379,192.168.1.194:2379,192.168.1.195:2379
+etcdctl endpoint status -w table
+etcdctl endpoint health -w table
+```
+

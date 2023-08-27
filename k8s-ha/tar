@@ -20,8 +20,9 @@ findf() {
 
 test -n "$1" || die "No out-file"
 
-mkdir -p $tmp
+mkdir -p $tmp/bin
 cp -R $dir/default/* $tmp
+$XCLUSTER install_prog --dest=$tmp envsubst
 
 if findf ctraffic.gz; then
 	gzip -dc $f > $tmp/bin/ctraffic
