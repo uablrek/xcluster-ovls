@@ -3,6 +3,8 @@
 Setup Kubernetes for High Availability (HA). This basically means to
 have a redundant control plane nodes behind a load balancer
 
+Keywords: vm-reset,keepalived,haproxy
+
 The [K8s HA documentation](
 https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/)
 describes two options for configuring the topology:
@@ -26,8 +28,8 @@ As usual, check the ovl script help printout for functions, tests and
 start options:
 
 ```
-./k8s-ha env
-./k8s-ha
+./k8s-ha.sh env
+./k8s-ha.sh
 ```
 
 
@@ -68,10 +70,28 @@ Manual testing:
 ```
 #export xcluster_ETCD_FAMILY=IPv6
 xcluster_K8S_DISABLE=yes ./k8s-ha.sh test --nvm=0 start_empty > $log
-# On a etcd VM
-etcdctl member list -w table
+# On a VM
 export ETCDCTL_ENDPOINTS=192.168.1.193:2379,192.168.1.194:2379,192.168.1.195:2379
+etcdctl member list -w table
 etcdctl endpoint status -w table
 etcdctl endpoint health -w table
+```
+
+## Test VM reboot
+
+We can't use `xc scalein` since it will lose the disk. That is
+equivalent with replacing HW, but we just want to reboot. Xcluster VMs
+reboot in about 1s which usually is too fast for testing. We want to
+do things, like a K8s reconfiguration, while a VM is down. So stop
+qemu emulation for some time:
+
+```
+./k8s-ha.sh stop_vm 193
+# Do some updates...
+./k8s-ha.sh reset_vm 193
+# Check status
+# Attach to the VM console
+screen -ls
+screen -r 175604.xcluster-CP6m -p vm-193
 ```
 

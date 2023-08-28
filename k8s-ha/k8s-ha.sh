@@ -27,6 +27,12 @@ echo "$1" | grep -qi "^help\|-h" && help
 log() {
 	echo "$*" >&2
 }
+findf() {
+	f=$ARCHIVE/$1
+	test -r $f && return 0
+	f=$HOME/Downloads/$1
+	test -r $f
+}
 
 ## Commands:
 ##   env
@@ -34,11 +40,14 @@ log() {
 cmd_env() {
 	test -n "$xcluster_MASTERS" || export xcluster_MASTERS=vm-001,vm-002,vm-003
 	test -n "$xcluster_ETCD_VMS" || export xcluster_ETCD_VMS="193 194 195"
+	etcd_size=$(echo $xcluster_ETCD_VMS | wc -w)
 	test -n "$xcluster_LB_VMS" || export xcluster_LB_VMS="191"
+	test -n "$XCLUSTER_MONITOR_BASE" || XCLUSTER_MONITOR_BASE=4000
 	export xcluster_ETCD_VMS
 	test -n "$__cni" || __cni=bridge
+	test -n "$__keepalived_ver" || __keepalived_ver=2.2.8
 	if test "$cmd" = "env"; then
-		opts="cni|nvm"
+		opts="cni|nvm|keepalived_ver"
 		xvar="MASTERS|ETCD_VMS|K8S_DISABLE|LB_VMS|ETCD_FAMILY"
 		set | grep -E "^(__($opts)|xcluster_($xvar))="
 		return 0
@@ -48,6 +57,82 @@ cmd_env() {
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
+}
+##   keepalived <--unpack|--build> [--force]
+##   keepalived --install=dir
+##   keepalived --man [page]
+##     Handle keepalived
+cmd_keepalived() {
+	cmd_env
+	test -n "$__install" && unset __unpack __build
+	test "$__build" = "yes" && __unpack=yes
+
+	local d=$XCLUSTER_WORKSPACE/keepalived-$__keepalived_ver
+	local x=$d/sys/usr/local/sbin/keepalived
+
+	if test "$__man" = "yes"; then
+		MANPATH="$d/sys/usr/local/share/man"
+		test -d "$MANPATH" || die "Keepalived not built"
+		if test -n "$1"; then
+			export MANPATH
+			xterm -bg '#ddd' -fg '#222' -geometry 80x43 -T $1 -e man $1 &
+		else
+			local f
+			mkdir -p $tmp
+			for f in $(find $MANPATH/ -type f); do
+				basename $f >> $tmp/man
+			done
+			cat $tmp/man | sort | column
+		fi
+		return 0
+	fi
+
+	if test "$__unpack" = "yes"; then
+		test "$__force" = "yes" && rm -rf $d
+		if ! test -d $d; then
+			findf keepalived-$__keepalived_ver.tar.gz || die "Not downloaded"
+			tar -C $XCLUSTER_WORKSPACE -xf $f || die "Unpack failed"
+			test -d $d || die "Unexpected dir"
+		fi
+	fi
+
+	if test "$__build" = "yes"; then
+		if ! test -d $d/sys; then
+			cd $d
+			./configure --disable-systemd || die configure
+			make -j$(nproc) || die make
+			make DESTDIR=$d/sys install || die "make install"
+			test -x $x || die "Not executable [$x]"
+		fi
+	fi
+
+	if test -n "$__install"; then
+		if test -x $x; then
+			mkdir -p "$__install" || die "Can't create install dir"
+			cp $x $__install
+		else
+			log "Keepalived not built"
+		fi
+	fi
+}
+
+##   stop_vm <vm>
+##     Stop VM emulation
+cmd_stop_vm() {
+	test -n "$1" || die "No VM"
+	cmd_env
+	local vm=$1
+	local port=$((XCLUSTER_MONITOR_BASE + vm))
+	echo stop | nc -N localhost $port > /dev/null 2>&1
+}
+##   reset_vm <vm>
+##     Reset and continue VM emulation
+cmd_reset_vm() {
+	test -n "$1" || die "No VM"
+	cmd_env
+	local vm=$1
+	local port=$((XCLUSTER_MONITOR_BASE + vm))
+	echo "system_reset\rcont" | nc -N localhost $port > /dev/null 2>&1
 }
 
 ##
@@ -61,12 +146,18 @@ cmd_test() {
 	test "$__xterm" = "yes" && start=start
 	rm -f $XCLUSTER_TMP/cdrom.iso
 
+	# This is a cludge to fix the (silly) default __nvm=4 in the test env
+	test "$__nvm" = "X" && unset __nvm
+
 	if test -n "$1"; then
 		local t=$1
 		shift
 		test_$t $@
 	else
-		test_basic
+		for t in etcd_vm_reboot master_reboot; do
+			tlog "=========== $t"
+			$me test $t || tdie $t
+		done
 	fi		
 
 	now=$(date +%s)
@@ -76,6 +167,7 @@ cmd_test() {
 ##     Start empty cluster
 test_start_empty() {
 	cd $dir
+	test -n "$__nvm" || __nvm=7
 	export __image=$XCLUSTER_HOME/hd-k8s-xcluster.img
 	test -n "$__nrouters" || export __nrouters=1
 	if test -n "$TOPOLOGY"; then
@@ -91,6 +183,7 @@ test_start_empty() {
 ##   test start
 ##     Start cluster
 test_start() {
+	test -n "$__nvm" || __nvm=7
 	test $__nvm -lt 3 && die "Must have >=3 VMs"
 	test_start_empty $@
 	test "$xcluster_K8S_DISABLE" = "yes" && return 0
@@ -132,10 +225,55 @@ test_start_ha() {
 	# control-plane. You might want to change that
 	otcr vip_routes
 }
+##   test etcd_vm_reboot
+##     Reboot one etcd VM, restore and reboot ahother. Check health.
+##     Influental settings: xcluster_ETCD_VMS, xcluster_ETCD_FAMILY
+test_etcd_vm_reboot() {
+	test $etcd_size -ge 3 || tdie "Etcd cluster too small"
+	export __nvm=0
+	export __nrouters=0
+	export xcluster_K8S_DISABLE=yes
+	unset xcluster_LB_VMS
+	test_start_empty
+	otc 195 "etcd_health $etcd_size"
+	tcase "Stop vm-193"
+	cmd_stop_vm 193
+	otc 195 "etcd_health $((etcd_size - 1))"
+	tcase "Reset and start vm-193"
+	cmd_reset_vm 193
+	otc 195 "etcd_health $etcd_size"
+	tcase "Stop vm-194"
+	cmd_stop_vm 194
+	otc 195 "etcd_health $((etcd_size - 1))"
+	tcase "Reset and start vm-194"
+	cmd_reset_vm 194
+	otc 195 "etcd_health $etcd_size"
+	xcluster_stop
+}
+##   test master_reboot
+##     Start with 2 K8s master nodes. Reboot one and test that API
+##     access still works. Restore and reboot the other, test again
+test_master_reboot() {
+	export xcluster_MASTERS="vm-001,vm-002"
+	test -n "$__nvm" || __nvm=4
+	test_start
+	otc 4 check_api
+	tcase "Stop vm-001"
+	cmd_stop_vm 1
+	otc 4 check_api
+	tcase "Reset and start vm-001"
+	cmd_reset_vm 1
+	tcase "Stop vm-002"
+	cmd_stop_vm 2
+	otc 4 check_api
+	tcase "Reset and start vm-002"
+	cmd_reset_vm 2
+	xcluster_stop
+}
 
 
 ##
-test -n "$__nvm" || export __nvm=7    # 3 masters + 4 workers
+test -n "$__nvm" || __nvm=X    # Prevent default setting
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
 indent=''
 

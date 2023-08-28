@@ -1,10 +1,23 @@
 #! /bin/sh
 # Prepare/convert the xcluster K8s start for HA
+event_log=/var/log/k8s-ha.log
+grep -q STARTED $event_log && exit 0    # This is a re-boot
+echo STARTED >> $event_log
 
 . /etc/profile
 # Set defaults
 test -n "$LAST_NODE" || echo "LAST_NODE=190" >> /etc/profile
-test -n "$PREFIX" || echo "PREFIX=fd00:" >> /etc/profile
+if test -z "$PREFIX"; then
+	PREFIX=fd00:
+	echo "PREFIX=$PREFIX" >> /etc/profile
+fi
+if test -z "$LB_IP"; then
+	# LB_IP should be a movable address assigned to one LB, but use a
+	# direct IP if not set
+	LB_IP=192.168.1.191
+	test "BASE_FAMILY" = "IPv6" && LB_IP=$PREFIX:192.168.1.191
+	echo "LB_IP=$LB_IP" >> /etc/profile
+fi
 
 die() {
 	echo "$@"
@@ -30,8 +43,6 @@ ln -sf /etc/rcS.d/etcd.rc /etc/init.d/12etcd.rc
 # Re-direct K8s API access to the load-balancer
 test -n "$LB_VMS" || die "No load-balancer VMs"
 test -n "$KUBECONFIG" || KUBECONFIG=/etc/kubernetes/kubeconfig.token
-# TODO: LB_IP should be a movable address assigned to one LB
-test -n "$LB_IP" || LB_IP=192.168.1.191
 sed -i -e "s,192.168.1.1,$LB_IP," $KUBECONFIG
 
 # Limit the K8s nodes

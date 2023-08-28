@@ -44,7 +44,7 @@ cmd_tcase_check_nodes() {
 	test_nodes
 }
 cmd_tcase_vip_routes() {
-	tcase "Set VIP routes (ECMP)"
+	tcase "Set VIP routes (ECMP to workers)"
 	vip_route
 }
 ##   tcase_start_servers
@@ -56,9 +56,67 @@ cmd_tcase_start_servers() {
 	assign-lb-ip -svc alpine -ip 10.0.0.0,$PREFIX:10.0.0.0
 	test_deployment alpine 60
 }
+##   tcase_check_api
+##     Test that "kubectl get nodes" works 10 times in a row
+cmd_tcase_check_api() {
+	tcase 'Test that "kubectl get nodes" works 10 times in a row'
+	pushv 60
+	tex get_nodes_x10
+}
+get_nodes_x10() {
+	local n
+	for n in $(seq 10); do
+		kubectl get nodes || return 1
+	done
+}
+##   tcase_etcd_health [expected]
+##     Check health of etcd endpoints
+cmd_tcase_etcd_health() {
+	local expected=$(echo $ETCD_VMS | wc -w)
+	test -n "$1" && expected=$1
+	tcase "Check health of etcd endpoints, expected=$expected"
+	set_endpoints
+	pushv 60
+	tex "check_eps $expected" || tdie "Healthy EPs $healthy_cnt"
+}
+set_endpoints() {
+	local n ep
+	for n in $ETCD_VMS; do
+		if test "$ETCD_FAMILY" = "IPv6"; then
+			ep=$ep,[$PREFIX:192.168.1.$n]:2379
+		else
+			ep=$ep,192.168.1.$n:2379
+		fi
+	done
+	export ETCDCTL_ENDPOINTS=$(echo $ep | cut -c2-)
+}
+healthy_eps() {
+	etcdctl endpoint health -w json 2> /dev/null | \
+		jq .[].health | grep true | wc -l
+}
+check_eps() {
+	healthy_cnt=$(healthy_eps)
+	test $healthy_cnt -eq $1
+}
 
 . /usr/lib/xctest
 indent='  '
+
+# Override test functions
+k8s_masters() {
+	local vm
+	for vm in $(echo $MASTERS | tr , ' '); do
+		echo $vm | sed -e 's,vm-0*,,'
+	done
+}
+k8s_workers() {
+	local n vm
+	for n in $(seq $__nvm); do
+		vm=$(printf "vm-%03d" $n)
+		echo ",$MASTERS," | grep -qF ",$vm," && continue
+		echo $n
+	done
+}
 
 
 # Get the command

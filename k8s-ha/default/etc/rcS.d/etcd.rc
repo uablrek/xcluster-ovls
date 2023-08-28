@@ -36,8 +36,8 @@ if test -z "$ETCD_CONFIG_FILE"; then
 		for n in $ETCD_VMS; do
 			vm=$(printf "vm-%03d" $n)
 			url=http://192.168.1.$n
-			test "$BASE_FAMILY" = "IPv6" && \
-				url=url=http://[$PREFIX:192.168.1.$n]
+			test "$ETCD_FAMILY" = "IPv6" && \
+				url=http://[$PREFIX:192.168.1.$n]
 			init="$init,$vm=$url:2380"
 			INITIAL_CLUSTER=$(echo $init | sed -e 's!^,*!!')
 		done
