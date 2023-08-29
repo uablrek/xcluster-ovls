@@ -1,8 +1,4 @@
 #! /bin/sh
-# Prepare/convert the xcluster K8s start for HA
-event_log=/var/log/k8s-ha.log
-grep -q STARTED $event_log && exit 0    # This is a re-boot
-echo STARTED >> $event_log
 
 . /etc/profile
 # Set defaults
@@ -12,12 +8,18 @@ if test -z "$PREFIX"; then
 	echo "PREFIX=$PREFIX" >> /etc/profile
 fi
 if test -z "$LB_IP"; then
-	# LB_IP should be a movable address assigned to one LB, but use a
-	# direct IP if not set
 	LB_IP=192.168.1.191
-	test "BASE_FAMILY" = "IPv6" && LB_IP=$PREFIX:192.168.1.191
+	# LB_IP should be a movable address assigned to one LB if
+	# keepalived is used
+	which keepalived > /dev/null 2>&1 && LB_IP=192.168.1.200
+	test "$BASE_FAMILY" = "IPv6" && LB_IP=$PREFIX:$LB_IP
 	echo "LB_IP=$LB_IP" >> /etc/profile
 fi
+
+# Prepare/convert the xcluster K8s start for HA
+event_log=/var/log/k8s-ha.log
+grep -q STARTED $event_log && exit 0    # This is a re-boot
+echo STARTED >> $event_log
 
 die() {
 	echo "$@"
@@ -43,7 +45,7 @@ ln -sf /etc/rcS.d/etcd.rc /etc/init.d/12etcd.rc
 # Re-direct K8s API access to the load-balancer
 test -n "$LB_VMS" || die "No load-balancer VMs"
 test -n "$KUBECONFIG" || KUBECONFIG=/etc/kubernetes/kubeconfig.token
-sed -i -e "s,192.168.1.1,$LB_IP," $KUBECONFIG
+sed -i -e "s,192.168.1.1,[$LB_IP]," $KUBECONFIG
 
 # Limit the K8s nodes
 sed -i -E 's,-le 200,-le $LAST_NODE,' /etc/rcS.d/*

@@ -18,6 +18,10 @@ test -n "$MASTERS" || MASTERS=vm-001
 cfg=/etc/haproxy/haproxy.cfg
 for vm in $(echo $MASTERS | tr , ' '); do
 	n=$(echo $vm | cut -d- -f2 | sed -rE 's,^0*,,')
-	echo "        server $vm 192.168.1.$n:6443 check" >> $cfg
+	if test "$BASE_FAMILY" = "IPv6"; then
+		echo "        server $vm [$PREFIX:192.168.1.$n]:6443 check" >> $cfg
+	else
+		echo "        server $vm 192.168.1.$n:6443 check" >> $cfg
+	fi
 done
-haproxy -f $cfg > /var/log/haproxy.log 2>&1 &
+haproxy -f $cfg -V -db > /var/log/haproxy.log 2>&1 &

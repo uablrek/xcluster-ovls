@@ -1,0 +1,32 @@
+#! /bin/sh
+. /etc/profile
+
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin"
+
+die() {
+	echo "$@"
+	exit 1
+}
+
+hostname | grep -Eq 'vm-[0-9]+$' || die "Invalid hostname [$(hostname)]"
+i=$(hostname | cut -d- -f2 | sed -rE 's,^0*,,')
+
+echo " $LB_VMS " | grep -Fq " $i " || exit 0
+test -n "$LB_IP" || exit 0
+which keepalived > /dev/null || exit 0
+
+
+cfg=/etc/keepalived.conf
+
+if echo $LB_IP | grep -q : ;then
+	# IPv6
+	sed -i -e "s,LB_IP,$LB_IP/120," $cfg
+else
+	sed -i -e "s,LB_IP,$LB_IP/24," $cfg
+fi
+		
+master=$(echo $LB_VMS | tr ' ' '\n' | head -1)
+test "$master" -eq "$i" && sed -i -e 's,BACKUP,MASTER,' $cfg
+
+keepalived -f $cfg --vrrp --log-console --no-syslog --dont-fork \
+	--log-detail -i HAPROXY > /var/log/keepalived.log 2>&1 &

@@ -3,7 +3,7 @@
 Setup Kubernetes for High Availability (HA). This basically means to
 have a redundant control plane nodes behind a load balancer
 
-Keywords: vm-reset,keepalived,haproxy
+Keywords: vm-reset,keepalived,haproxy,taint master-nodes
 
 The [K8s HA documentation](
 https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/)
@@ -64,34 +64,66 @@ xcluster_K8S_DISABLE=yes ./k8s-ha.sh test start > $log
 Etcd is still started.
 
 
-## Test ETCD
+## Tests
 
-Manual testing:
+Prerequisite: the `keepalived` program must be downloaded and built:
+```
+./k8s-ha.sh keepalived --build
+```
+
+Since we want to test HA, many tests reboot a VM and checks that
+everything works while the VM is away. We can't use `xc scalein` since
+it will lose the disk (that is equivalent with replacing HW).
+Xcluster VMs reboot in about 1s which usually is too fast for
+testing. We want to do things, like a K8s reconfiguration, while a VM
+is down. So stop qemu emulation for some time:
+
+```
+./k8s-ha.sh stop_vm 193
+# Do some updates (optional), and check operation
+./k8s-ha.sh reset_vm 193
+# Check operation again
+# Attach to the VM console if you want to see the reboot
+screen -ls
+screen -r 175604.xcluster-CP6m -p vm-193
+```
+
+The K8s workers are the applications responsibility, but in a K8s HA
+setup, operation should work when a load-balancer, one (or many) etcd
+nodes or a K8s master are lost. Since we are using external etcd nodes
+and also load-balancers out-of-cluster, we can test these situations
+separately.
+
+The current tests are rather simple, just verify that the K8s API
+server can be reached using `kubectl`. The basic check is that
+`kubectl get nodes` should work 10 times in a row. The default test
+run a suite. It should be executed for both IPv4 and IPv6:
+
+```
+./k8s-ha.sh test > $log
+xcluster_BASE_FAMILY=IPv6 ./k8s-ha.sh test > $log
+# Takes around 160s for each suite
+```
+
+In the future the test should be extended with K8s re-configurations
+when some VMs are away. Interresting is for instance that components
+like `kube-proxy` reacts when a K8s master is lost.
+
+
+## Test ETCD stand alone
+
+Etcd is the most complex and most crucial component so it can be
+useful to test it without K8s. 
+
 ```
 #export xcluster_ETCD_FAMILY=IPv6
 xcluster_K8S_DISABLE=yes ./k8s-ha.sh test --nvm=0 start_empty > $log
 # On a VM
+cat /etc/etcd-generated.conf.yaml
+# Etcd is configured to listen to [::]:2379, so IPv4 endpoints works always
 export ETCDCTL_ENDPOINTS=192.168.1.193:2379,192.168.1.194:2379,192.168.1.195:2379
 etcdctl member list -w table
 etcdctl endpoint status -w table
 etcdctl endpoint health -w table
-```
-
-## Test VM reboot
-
-We can't use `xc scalein` since it will lose the disk. That is
-equivalent with replacing HW, but we just want to reboot. Xcluster VMs
-reboot in about 1s which usually is too fast for testing. We want to
-do things, like a K8s reconfiguration, while a VM is down. So stop
-qemu emulation for some time:
-
-```
-./k8s-ha.sh stop_vm 193
-# Do some updates...
-./k8s-ha.sh reset_vm 193
-# Check status
-# Attach to the VM console
-screen -ls
-screen -r 175604.xcluster-CP6m -p vm-193
 ```
 

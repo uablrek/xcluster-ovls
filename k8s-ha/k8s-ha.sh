@@ -4,6 +4,16 @@
 ##
 ##   Help script for the xcluster ovl/k8s-ha.
 ##
+## Env:
+##   # Defaults shown
+##   xcluster_BASE_FAMILY=IPv4
+##   xcluster_ETCD_FAMILY=IPv4
+##   xcluster_K8S_DISABLE=no
+##   xcluster_ETCD_FAMILY=IPv4
+##   xcluster_ETCD_VMS="193 194 195"
+##   xcluster_LB_VMS="191 192"
+##   xcluster_MASTERS="vm-001,vm-002,vm-003"
+##
 
 prg=$(basename $0)
 dir=$(dirname $0); dir=$(readlink -f $dir)
@@ -41,7 +51,7 @@ cmd_env() {
 	test -n "$xcluster_MASTERS" || export xcluster_MASTERS=vm-001,vm-002,vm-003
 	test -n "$xcluster_ETCD_VMS" || export xcluster_ETCD_VMS="193 194 195"
 	etcd_size=$(echo $xcluster_ETCD_VMS | wc -w)
-	test -n "$xcluster_LB_VMS" || export xcluster_LB_VMS="191"
+	test -n "$xcluster_LB_VMS" || export xcluster_LB_VMS="191 192"
 	test -n "$XCLUSTER_MONITOR_BASE" || XCLUSTER_MONITOR_BASE=4000
 	export xcluster_ETCD_VMS
 	test -n "$__cni" || __cni=bridge
@@ -58,17 +68,18 @@ cmd_env() {
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
 }
-##   keepalived <--unpack|--build> [--force]
+##   keepalived <--download|--unpack|--build> [--force]
 ##   keepalived --install=dir
 ##   keepalived --man [page]
 ##     Handle keepalived
 cmd_keepalived() {
 	cmd_env
-	test -n "$__install" && unset __unpack __build
 	test "$__build" = "yes" && __unpack=yes
+	test "$__unpack" = "yes" &&  __download=yes
 
 	local d=$XCLUSTER_WORKSPACE/keepalived-$__keepalived_ver
 	local x=$d/sys/usr/local/sbin/keepalived
+	local ar=keepalived-$__keepalived_ver.tar.gz
 
 	if test "$__man" = "yes"; then
 		MANPATH="$d/sys/usr/local/share/man"
@@ -87,6 +98,24 @@ cmd_keepalived() {
 		return 0
 	fi
 
+	if test -n "$__install"; then
+		if test -x $x; then
+			mkdir -p "$__install" || die "Can't create install dir"
+			cp $x $__install
+		else
+			log "Keepalived not built"
+		fi
+		return 0
+	fi
+
+	if test "$__download" = "yes"; then
+		local ar
+		if ! findf $ar; then
+			curl -L https://www.keepalived.org/software/$ar \
+				> $ARCHIVE/$ar || die "Download failed"
+		fi
+	fi
+
 	if test "$__unpack" = "yes"; then
 		test "$__force" = "yes" && rm -rf $d
 		if ! test -d $d; then
@@ -103,15 +132,6 @@ cmd_keepalived() {
 			make -j$(nproc) || die make
 			make DESTDIR=$d/sys install || die "make install"
 			test -x $x || die "Not executable [$x]"
-		fi
-	fi
-
-	if test -n "$__install"; then
-		if test -x $x; then
-			mkdir -p "$__install" || die "Can't create install dir"
-			cp $x $__install
-		else
-			log "Keepalived not built"
 		fi
 	fi
 }
@@ -154,7 +174,7 @@ cmd_test() {
 		shift
 		test_$t $@
 	else
-		for t in etcd_vm_reboot master_reboot; do
+		for t in etcd_vm_reboot master_reboot lb_reboot etcd_k8s_reboot; do
 			tlog "=========== $t"
 			$me test $t || tdie $t
 		done
@@ -184,7 +204,6 @@ test_start_empty() {
 ##     Start cluster
 test_start() {
 	test -n "$__nvm" || __nvm=7
-	test $__nvm -lt 3 && die "Must have >=3 VMs"
 	test_start_empty $@
 	test "$xcluster_K8S_DISABLE" = "yes" && return 0
 
@@ -203,7 +222,7 @@ test_start_ha() {
 	export __nvm=7
 	export xcluster_MASTERS=vm-001,vm-002,vm-003
 	export xcluster_ETCD_VMS="193 194 195"
-	export xcluster_LB_VMS="191"
+	export xcluster_LB_VMS="191 192"
 	unset xcluster_K8S_DISABLE
 	xcluster_start network-topology haproxy . $@
 
@@ -228,6 +247,7 @@ test_start_ha() {
 ##   test etcd_vm_reboot
 ##     Reboot one etcd VM, restore and reboot ahother. Check health.
 ##     Influental settings: xcluster_ETCD_VMS, xcluster_ETCD_FAMILY
+##     The test is performed without K8s
 test_etcd_vm_reboot() {
 	test $etcd_size -ge 3 || tdie "Etcd cluster too small"
 	export __nvm=0
@@ -250,6 +270,26 @@ test_etcd_vm_reboot() {
 	otc 195 "etcd_health $etcd_size"
 	xcluster_stop
 }
+##   test etcd_k8s_reboot
+##     Reboot the etcd VM one-by-one. Check K8s API server access
+test_etcd_k8s_reboot() {
+	export xcluster_MASTERS="vm-001,vm-002"
+	test -n "$__nvm" || __nvm=4
+	test_start
+	local vm n
+	for n in $xcluster_ETCD_VMS; do
+		otc $__nvm check_api
+		vm=$(printf "vm-%03d" $n)
+		tcase "Stop $vm"
+		cmd_stop_vm $n
+		otc $__nvm check_api
+		tcase "Reset and start $vm"
+		cmd_reset_vm $n
+		tex check_vm $n || tdie
+		otc $n "etcd_health $etcd_size"
+	done
+	xcluster_stop
+}
 ##   test master_reboot
 ##     Start with 2 K8s master nodes. Reboot one and test that API
 ##     access still works. Restore and reboot the other, test again
@@ -268,6 +308,34 @@ test_master_reboot() {
 	otc 4 check_api
 	tcase "Reset and start vm-002"
 	cmd_reset_vm 2
+	xcluster_stop
+}
+##   test lb_reboot
+##     Reboot a load-balancer VM, restore, and reboot the other.
+##     Check API access
+test_lb_reboot() {
+	# Check that keepalived is built
+	mkdir -p $tmp
+	__install=$tmp
+	cmd_keepalived || die
+
+	export xcluster_MASTERS="vm-001,vm-002"
+	export xcluster_LB_VMS="191 192"
+	
+	test -n "$__nvm" || __nvm=4
+	test_start
+	otc 4 check_api
+	tcase "Stop vm-191"
+	cmd_stop_vm 191
+	otc 4 check_api
+	tcase "Reset and start vm-191"
+	cmd_reset_vm 191
+	tcase "Stop vm-192"
+	cmd_stop_vm 192
+	otc 4 check_api
+	tcase "Reset and start vm-192"
+	cmd_reset_vm 192
+	otc 4 check_api
 	xcluster_stop
 }
 
