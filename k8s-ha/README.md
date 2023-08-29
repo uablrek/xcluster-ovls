@@ -1,4 +1,4 @@
-# Xcluster/ovl - k8s-ha [WiP] Work in Progress
+# Xcluster/ovl - k8s-ha
 
 Setup Kubernetes for High Availability (HA). This basically means to
 have a redundant control plane nodes behind a load balancer
