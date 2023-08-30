@@ -125,7 +125,6 @@ cmd_tcase_deny_external_traffic() {
 		tdie "Ipv4: got [$failed] failed connects, expected 20"
 	fi
 }
-
 ##   tcase_conntrack_size [size]
 ##     Set the conntrack table size. Default 20000
 cmd_tcase_conntrack_size() {
@@ -134,11 +133,47 @@ cmd_tcase_conntrack_size() {
 	tcase "Set conntrack size to $s"
 	echo $s > /proc/sys/net/nf_conntrack_max
 }
+##   tcase_antrea_setup
+##     Setup a mconnect server and an IPv6 service for distribution test
+cmd_tcase_antrea_setup() {
+	tcase "Setup server and IPv6 service for distribution test"
+	kubectl create -f $yamld/antrea-test.yaml || tdie
+	assign-lb-ip -svc tserver-mconnect -ip $PREFIX:10.0.0.40
+	test_deployment tserver-mconnect 180
+}
+##   tcase_traffic_from_pod <selector> <svc|ip>
+##     Test mconnect from a POD to a service
+cmd_tcase_traffic_from_pod() {
+	tcase "Test mconnect from a POD to a service [$2]"
+	test -n "$2" || tdie "Parameter missing"
+	local pod=$(kubectl get pods -l $1 -o name | head -1)
+	tlog "$pod"
+	mkdir -p $tmp
+	local out=$tmp/out
+	pushv 60
+	tex "mconnect_from_pod $pod $2 /dev/null" || tdie "FAILED mconnect"
+	# Here the service can be parially setup which may lead to a false
+	# error. If this is in a bisect search we *absolutely not* want
+	# false errors. So, delay and make a final connect
+	sleep 2
+	mconnect_from_pod $pod $2 $out || tdie "FAILED final mconnect"
+	if ! check_mconnect_result $out 100 4 100; then
+		cat $out | jq >&2
+		tlog "FAILED Distribution"
+	fi
+	# Only fail if we have only one target
+	local targets=$(cat $out | jq '.hosts|flatten|length')
+	test "$targets" -gt 1 || tdie "Targets [$targets]"
+	return 0
+}
+mconnect_from_pod() {
+	kubectl exec $1 -- mconnect -address $2:5001 -nconn 100 -output json > $3
+}
 
 . /usr/lib/xctest
 indent='  '
 
-
+##
 # Get the command
 cmd=$1
 shift

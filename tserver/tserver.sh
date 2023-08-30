@@ -120,9 +120,10 @@ cmd_test() {
 ##   test start_empty
 ##     Start empty cluster
 test_start_empty() {
+	cd $dir
 	test -n "$__nrouters" || __nrouters=1
 	export xcluster_PREFIX=$PREFIX
-	xcluster_start tserver $@
+	xcluster_start . $@
 	otc 1 check_namespaces
 	otc 1 check_nodes
 	otcr vip_routes
@@ -143,6 +144,22 @@ test_start_narrow_svc() {
 	test_start $@
 	otc 1 create_svc
 	otcr "vip_route 192.168.1.2"
+}
+##   test [--cni=bridge] start_cni
+##     Start with a selected CNI-plugin
+test_start_cni() {
+	test -n "$__cni" || __cni=bridge
+	export xcluster___cni=$__cni
+	export __image=$XCLUSTER_HOME/hd-k8s-xcluster.img
+	test_start_empty k8s-cni-$__cni $@
+}
+##   test antrea
+##     A custom test of distribution to an IPv6 service from within a POD
+test_antrea() {
+	test -n "$__cni" || __cni=antrea
+	test_start_cni $@
+	otc 1 antrea_setup
+	otc 1 "traffic_from_pod app=tserver-mconnect tserver-mconnect"
 }
 ##   test connectivity [--replicas=4] (default)
 ##     Test external connectivity
