@@ -57,13 +57,24 @@ cmd_tcase_vip_route() {
 }
 
 ##   tcase_start_tserver
-##     Start tserver PODs
+##     Start a deployment
 cmd_tcase_start_tserver() {
-	tcase "Start tserver"
+	local deployment=tserver
+	test -n "$1" && deployment=$1
+	tcase "Start deployment $deployment"
 	test -n "$__replicas" &&
-		sed -i -e "s,replicas: 4,replicas: $__replicas," $yamld/tserver.yaml
-	kubectl create -f $yamld/tserver.yaml
-	test_deployment tserver 180
+		sed -i -e "s,replicas: 4,replicas: $__replicas," $yamld/$deployment.yaml
+	kubectl create -f $yamld/$deployment.yaml
+	test_deployment $deployment 180
+}
+##   tcase_start_daemonset
+##     Start a DaemonSet
+cmd_tcase_start_daemonset() {
+	local daemonset=tserver-daemonset
+	test -n "$1" && daemonset=$1
+	tcase "Start deployment $daemonset"
+	kubectl create -f $yamld/$daemonset.yaml
+	test_daemonset $daemonset 180
 }
 ##   tcase_create_svc
 ##     Create services and assign lb-ip's

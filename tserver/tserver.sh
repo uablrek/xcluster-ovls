@@ -95,6 +95,11 @@ cmd_install_servers() {
 	else
 		log "Not available: sctpt"
 	fi
+
+	which musl-gcc > /dev/null || die "Install musl-tools"
+	mkdir -p $tmp
+	make -C $dir/src O=$tmp CC=musl-gcc static > /dev/null || die "Make failed"
+	cp $tmp/bin/tserver $dst
 }
 ##
 ## Tests;
@@ -144,6 +149,14 @@ test_start_narrow_svc() {
 	test_start $@
 	otc 1 create_svc
 	otcr "vip_route 192.168.1.2"
+}
+##   test start_daemonset
+##     Start with a DaemonSet and a externalTrafficPolicy:Local svc
+test_start_daemonset() {
+	test_start_empty $@
+	otcr "vip_route 192.168.1.2"
+	otc 1 "create_1svc etp-local 10.0.0.60"
+	otc 1 "start_daemonset"
 }
 ##   test [--cni=bridge] start_cni
 ##     Start with a selected CNI-plugin

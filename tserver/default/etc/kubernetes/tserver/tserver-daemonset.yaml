@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: tserver-daemonset
+spec:
+  selector:
+    matchLabels:
+      app: tserver-daemonset
+  template:
+    metadata:
+      labels:
+        app: tserver-daemonset
+    spec:
+      hostNetwork: true
+      containers:
+      - name: tserver
+        image: docker.io/uablrek/tserver:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        env:
+        - name: SERVERS
+          value: "mconnect,ctraffic,kahttp,sctpt"
+        ports:
+        - name: mconnect
+          containerPort: 5001
+        - name: ctraffic
+          containerPort: 5003
+        - name: mconnect-udp
+          protocol: UDP
+          containerPort: 5001
+        - name: ctraffic-udp
+          protocol: UDP
+          containerPort: 5003
+        - name: "kahttp"
+          containerPort: 8080
+        - name: "kahttps"
+          containerPort: 8443
+        - name: "sctpt"
+          protocol: SCTP
+          containerPort: 6000
+        - name: "nc"
+          containerPort: 5004
