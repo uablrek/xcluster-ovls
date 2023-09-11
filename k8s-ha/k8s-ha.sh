@@ -56,6 +56,10 @@ cmd_env() {
 	export xcluster_ETCD_VMS
 	test -n "$__cni" || __cni=bridge
 	test -n "$__keepalived_ver" || __keepalived_ver=2.2.8
+
+	# This is a cludge to fix the (silly) default __nvm=4 in the test env
+	test "$__nvm" = "X" && unset __nvm
+
 	if test "$cmd" = "env"; then
 		opts="cni|nvm|keepalived_ver"
 		xvar="MASTERS|ETCD_VMS|K8S_DISABLE|LB_VMS|ETCD_FAMILY"
@@ -142,6 +146,7 @@ cmd_stop_vm() {
 	test -n "$1" || die "No VM"
 	cmd_env
 	local vm=$1
+	rsh $vm sync
 	local port=$((XCLUSTER_MONITOR_BASE + vm))
 	echo stop | nc -N localhost $port > /dev/null 2>&1
 }
@@ -166,14 +171,12 @@ cmd_test() {
 	test "$__xterm" = "yes" && start=start
 	rm -f $XCLUSTER_TMP/cdrom.iso
 
-	# This is a cludge to fix the (silly) default __nvm=4 in the test env
-	test "$__nvm" = "X" && unset __nvm
-
 	if test -n "$1"; then
 		local t=$1
 		shift
 		test_$t $@
 	else
+		export __cni
 		for t in etcd_vm_reboot master_reboot lb_reboot etcd_k8s_reboot; do
 			tlog "=========== $t"
 			$me test $t || tdie $t

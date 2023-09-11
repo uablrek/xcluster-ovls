@@ -100,9 +100,10 @@ server can be reached using `kubectl`. The basic check is that
 run a suite. It should be executed for both IPv4 and IPv6:
 
 ```
+#export __cni=cilium  # (default=bridge)
 ./k8s-ha.sh test > $log
 xcluster_BASE_FAMILY=IPv6 ./k8s-ha.sh test > $log
-# Takes around 160s for each suite
+# Takes around 3-4m for each suite
 ```
 
 In the future the test should be extended with K8s re-configurations

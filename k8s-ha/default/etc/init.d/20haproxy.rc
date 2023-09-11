@@ -16,6 +16,20 @@ echo " $LB_VMS " | grep -Fq " $i " || exit 0
 test -n "$MASTERS" || MASTERS=vm-001
 
 cfg=/etc/haproxy/haproxy.cfg
+log=/var/log/haproxy.log
+# Work-around for a bug:
+# After reset the cfg file was appended with ~90 null charaters.
+# This because the sudden reset left the ext3 fs in a faulty state.
+#  ./k8s-ha.sh test start > $log; ./k8s-ha.sh reset_vm 191
+#  # on vm-191
+#  less /etc/haproxy/haproxy.cfg-foobar
+if test -r $cfg-backup; then
+	cp $cfg $cfg-foobar
+	cp $cfg-backup $cfg
+else
+	cp $cfg $cfg-backup
+fi
+echo "Adding servers $MASTERS" >> $log
 for vm in $(echo $MASTERS | tr , ' '); do
 	n=$(echo $vm | cut -d- -f2 | sed -rE 's,^0*,,')
 	if test "$BASE_FAMILY" = "IPv6"; then
@@ -24,4 +38,6 @@ for vm in $(echo $MASTERS | tr , ' '); do
 		echo "        server $vm 192.168.1.$n:6443 check" >> $cfg
 	fi
 done
-haproxy -f $cfg -V -db > /var/log/haproxy.log 2>&1 &
+
+echo "Starting haproxy..." >> $log
+haproxy -f $cfg -V -db >> $log 2>&1 &
