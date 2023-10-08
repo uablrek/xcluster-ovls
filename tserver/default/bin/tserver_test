@@ -93,6 +93,7 @@ cmd_tcase_create_1svc() {
 	local name=$1 vip=$2
 	local f=$yamld/$name.yaml
 	test -r $f || f=$yamld/svc-$name.yaml
+	test -r $f || tdie "Svc not found: $name"
 	kubectl create -f $f || die "kubectl create"
 	assign-lb-ip -svc $name -ip $vip,$PREFIX:$vip
 }
@@ -120,16 +121,18 @@ test_mconnect() {
 ##   tcase_deny_external_traffic <vip>
 ##     Test that traffic to the vip is denied
 cmd_tcase_deny_external_traffic() {
-	tcase "Test that traffic to $1 is denied"
+	local vip=$1
+	tcase "Test that traffic to $vip is denied"
+	test -n "$vip" || tdie "No VIP address"
 	mkdir -p $tmp
 	local out=$tmp/out failed
-	mconnect -address 10.0.0.10:5001 -nconn 20 -output json > $out
+	mconnect -address $vip:5001 -nconn 20 -output json > $out
 	failed=$(jq -r .failed_connects < $out)
 	if test "$failed" != "20"; then
 		cat $out
 		tdie "Ipv4: got [$failed] failed connects, expected 20"
 	fi
-	mconnect -address $PREFIX:10.0.0.10:5001 -nconn 20 -output json > $out
+	mconnect -address $PREFIX:$vip:5001 -nconn 20 -output json > $out
 	failed=$(jq -r .failed_connects < $out)
 	if test "$failed" != "20"; then
 		cat $out

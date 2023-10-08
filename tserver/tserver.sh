@@ -122,18 +122,20 @@ cmd_test() {
 	now=$(date +%s)
 	tlog "Xcluster test ended. Total time $((now-begin)) sec"
 }
-##   test start_empty
+##   test [--cni=] start_empty
 ##     Start empty cluster
 test_start_empty() {
 	cd $dir
+	local cni
+	test -n "$__cni" && cni=k8s-cni-$__cni
 	test -n "$__nrouters" || __nrouters=1
 	export xcluster_PREFIX=$PREFIX
-	xcluster_start . $@
+	xcluster_start . $cni $@
 	otc 1 check_namespaces
 	otc 1 check_nodes
 	otcr vip_routes
 }
-##   test start [--replicas=4]
+##   test [--replicas=4] start
 ##     Start cluster with ovl functions
 test_start() {
 	test_start_empty $@
@@ -158,19 +160,11 @@ test_start_daemonset() {
 	otc 1 "create_1svc etp-local 10.0.0.60"
 	otc 1 "start_daemonset"
 }
-##   test [--cni=bridge] start_cni
-##     Start with a selected CNI-plugin
-test_start_cni() {
-	test -n "$__cni" || __cni=bridge
-	export xcluster___cni=$__cni
-	export __image=$XCLUSTER_HOME/hd-k8s-xcluster.img
-	test_start_empty k8s-cni-$__cni $@
-}
 ##   test antrea
 ##     A custom test of distribution to an IPv6 service from within a POD
 test_antrea() {
 	test -n "$__cni" || __cni=antrea
-	test_start_cni $@
+	test_start_empty $@
 	otc 1 antrea_setup
 	otc 1 "traffic_from_pod app=tserver-mconnect tserver-mconnect"
 }
