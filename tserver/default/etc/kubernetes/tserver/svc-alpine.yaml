@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: lb-sourceranges
+  name: alpine
 spec:
   loadBalancerSourceRanges:
   - "192.168.2.0/24"
@@ -10,9 +10,10 @@ spec:
 #  - "fd00::c0a8:100/120"
   ipFamilyPolicy: RequireDualStack
   selector:
-    app: tserver
+    app: alpine
   type: LoadBalancer
   allocateLoadBalancerNodePorts: false
   ports:
-  - port: 5001
-    name: mconnect
+  - port: 7001
+    name: nc
+    targetPort: 7007

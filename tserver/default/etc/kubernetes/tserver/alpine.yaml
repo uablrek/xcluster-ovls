@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpine
+spec:
+  selector:
+    matchLabels:
+      app: alpine
+  replicas: 4
+  template:
+    metadata:
+      labels:
+        app: alpine
+    spec:
+      containers:
+      - name: alpine
+        image: alpine:latest
+        imagePullPolicy: IfNotPresent
+        command: ["nc", "-lk", "-p", "7007", "-e", "hostname"]
+        ports:
+        - name: nc
+          containerPort: 7007
+

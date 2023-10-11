@@ -152,6 +152,12 @@ test_start_narrow_svc() {
 	otc 1 create_svc
 	otcr "vip_route 192.168.1.2"
 }
+##   test start_kahttp_np
+##     Start with the "kahttp-np" svc using NodePorts
+test_start_kahttp_np() {
+	test_start $@
+	otc 1 "create_1svc kahttp-np 10.0.0.61"
+}
 ##   test start_daemonset
 ##     Start with a DaemonSet and a externalTrafficPolicy:Local svc
 test_start_daemonset() {
