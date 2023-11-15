@@ -12,6 +12,10 @@ spec:
       labels:
         app: tserver
     spec:
+      #hostNetwork: true
+      nodeSelector:
+        #example.com/server: tserver
+      enableServiceLinks: false
       containers:
       - name: tserver
         image: docker.io/uablrek/tserver:latest

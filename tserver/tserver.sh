@@ -135,7 +135,7 @@ test_start_empty() {
 	otc 1 check_nodes
 	otcr vip_routes
 }
-##   test [--replicas=4] start
+##   test [--replicas=4] [--nodes=2,3....] start
 ##     Start cluster with ovl functions
 test_start() {
 	test_start_empty $@
@@ -143,7 +143,7 @@ test_start() {
 	test -n "$__replicas" || __replicas=4
 	local ctsize=$((__replicas * 4000 + 20000))
 	otcr "conntrack_size $ctsize"
-	otc 1 "start_tserver --replicas=$__replicas"
+	otc 1 "start_tserver --replicas=$__replicas --nodes=$__nodes"
 }
 ##   test start_narrow_svc [--replicas=4]
 ##     Start cluster with svc's and VIP route to vm-002
@@ -157,6 +157,7 @@ test_start_narrow_svc() {
 test_start_kahttp_np() {
 	test_start $@
 	otc 1 "create_1svc kahttp-np 10.0.0.61"
+	#otc 1 "create_1svc kahttp-np"
 }
 ##   test start_daemonset
 ##     Start with a DaemonSet and a externalTrafficPolicy:Local svc

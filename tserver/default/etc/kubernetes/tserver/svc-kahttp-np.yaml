@@ -6,8 +6,10 @@ spec:
   ipFamilyPolicy: RequireDualStack
   selector:
     app: tserver
+  #type: NodePort
   type: LoadBalancer
-  externalTrafficPolicy: Local
+  #externalTrafficPolicy: Local
   ports:
   - port: 8080
     name: kahttp
+    nodePort: 30008

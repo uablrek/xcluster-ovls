@@ -8,6 +8,8 @@ spec:
     app: tserver
   type: LoadBalancer
   allocateLoadBalancerNodePorts: false
+  #externalTrafficPolicy: Local
+  #internalTrafficPolicy: Local
   ports:
   - port: 5001
     name: mconnect

@@ -11,7 +11,7 @@ spec:
       labels:
         app: tserver-daemonset
     spec:
-      hostNetwork: true
+      #hostNetwork: true
       containers:
       - name: tserver
         image: docker.io/uablrek/tserver:latest
