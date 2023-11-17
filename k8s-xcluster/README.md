@@ -14,7 +14,7 @@ environment that most other environments doesn't support, like:
 
 * Easy switch between different CNI-plugins
 * K8s HA setup
-* SR-IOV without a supporting HW NIC (requires qemu 7)
+* SR-IOV without a supporting HW NIC (requires qemu 8)
 * Different network topologies
 * Test any kernel setup, e.g. kernel versions, config or eBPF
 
