@@ -91,3 +91,55 @@ cdo test-template
 kubectl get nodes
 xc stop
 ```
+
+### Overlays
+
+Overlays in `xcluster` are archives that are unpacked in orded to the
+root file system at startup. However, usually "overlay" refer to a
+directory with a script that creates the archive:
+
+```
+# xcadmin mkovl --template=template --ovldir=. my-ovl
+# find my-ovl -type f
+my-ovl/my-ovl.sh
+my-ovl/README.md
+my-ovl/tar
+my-ovl/default/bin/my-ovl_test
+```
+
+An ovl directory (ovl) *must* contain a `tar` script that emit a tar
+image to stdout. In all ovl's you can check what will be installed
+with:
+
+```
+./tar - | tar t
+```
+
+An ovl should also contain a script with the same name as the ovl, and
+a `README.md`. This is optional, but a uniform structure is
+desirable. The script usually has at least a "test start" function:
+
+```
+log=/tmp/xcluster.log
+cd my-ovl
+./my-ovl.sh test start lspci > $log
+vm 1
+# In the terminal window
+lspci
+```
+
+Any number of additional ovl's can be added after the test command. In
+the example `ovl/lspci` is included.
+
+The `$XCLUSTER_OVLPATH` contains directories where `xcluster` search
+for ovls. There are several functions that helps with ovl handling:
+
+```
+lso                 # List ovls
+cdo <ovl>           # Cd to an ovl with command completion
+xc ovld <ovl>       # Print the path to an ovl
+xcadmin mkovl ...   # Create a new ovl
+```
+
+
+
