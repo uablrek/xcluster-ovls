@@ -34,6 +34,8 @@ A 40-node K8s cluster started in less than 10s:
 
 <img src="xcluster40.svg" width="50%" />
 
+The PC has an Intel i9 CPU, and 64G RAM.
+
 
 ### Installation
 
@@ -92,9 +94,14 @@ kubectl get nodes
 xc stop
 ```
 
+A reason for the fast start is that no container images are
+loaded. The Kubernetes servers are pre-loaded on the image, and are
+started from scripts.
+
+
 ### Overlays
 
-Overlays in `xcluster` are archives that are unpacked in orded to the
+Overlays in `xcluster` are archives that are unpacked in order to the
 root file system at startup. However, usually "overlay" refer to a
 directory with a script that creates the archive:
 
@@ -107,9 +114,8 @@ my-ovl/tar
 my-ovl/default/bin/my-ovl_test
 ```
 
-An ovl directory (ovl) *must* contain a `tar` script that emit a tar
-image to stdout. In all ovl's you can check what will be installed
-with:
+An overlay directory (ovl) *must* contain a `tar` script that writes a
+tar image. In all ovl's you can check what will be installed with:
 
 ```
 ./tar - | tar t
@@ -142,4 +148,80 @@ xcadmin mkovl ...   # Create a new ovl
 ```
 
 
+## Kubernetes environment
 
+To make network tests with K8s you need:
+
+1. To start xcluster in it's own [network namespace](
+   https://github.com/Nordix/xcluster/blob/master/doc/netns.md) (mandatory)
+2. A [private registry](
+   https://github.com/Nordix/xcluster/blob/master/ovl/private-reg/README.md)
+   (optional, but *highly* recommended, and assumed from now on)
+
+Run the basic test:
+```
+log=/tmp/xcluster.log   # (assumed to be set from now on)
+export XOVLS=private-reg
+images lreg_preload kubernetes mconnect
+cdo test-template
+./test-template.sh test basic > $log
+```
+
+### Use another CNI-plugin
+
+```
+images lreg_preload k8s-cni-calico
+cdo test-template
+./test-template.sh test basic k8s-cni-calico > /dev/null
+```
+
+The local registry must be pre-loaded with the necessary images, then
+add the cni ovl to the test command. Available CNI-plugins are:
+
+* [k8s-cni-antrea](https://github.com/Nordix/xcluster/tree/master/ovl/k8s-cni-antrea) (requires ovl/ovs)
+* [k8s-cni-calico](https://github.com/Nordix/xcluster/tree/master/ovl/k8s-cni-calico)
+* [k8s-cni-flannel](https://github.com/Nordix/xcluster/tree/master/ovl/k8s-cni-flannel)
+* [k8s-cni-xcluster](https://github.com/Nordix/xcluster/tree/master/ovl/k8s-cni-xcluster)
+* [k8s-cni-cilium](https://github.com/Nordix/xcluster/tree/master/ovl/k8s-cni-cilium) (will by-pass kube-proxy)
+
+
+### ovl/env
+
+The `env` ovl is included by default by the test scripts. It makes all
+environment variables beginning with "xcluster_" appear on all VM (but
+without the "xcluster_" prefix).
+
+```
+cdo test-template
+xcluster_HELLO=World ./test-template.sh test start_empty > $log
+# On any VM
+# echo $HELLO
+World
+```
+
+The `/etc/profile` file must be sourced in scripts.
+
+There are several variables that are used in tests, for example:
+
+* xcluster_TZ - Set the time-zone ([ovl/timezone](https://github.com/Nordix/xcluster/tree/master/ovl/timezone))
+* xcluster_DOMAIN - The domain is "xcluster" by default, but many programs (wrongly) assumes "cluster.local"
+* xcluster_FEATURE_GATES - Comma separated
+* xcluster_BASE_FAMILY - IPv4 (default), or IPv6
+* xcluster_PROXY_MODE - "ipvs" (default), "iptables", or "disabled"
+
+Example:
+```
+export xcluster_TZ=EST+5EDT,M3.2.0/2,M11.1.0/2
+xcluster_BASE_FAMILY=IPv6 xcluster_PROXY_MODE=disabled xcluster_DOMAIN=cluster.local \
+ ./test-template.sh test start_empty k8s-cni-cilium containerd > $log
+# On a cluster VM
+# date
+Thu Nov 23 15:19:26 EST 2023
+# nslookup kubernetes.default.svc.cluster.local
+Server:         192.168.0.2
+Address:        192.168.0.2:53
+
+
+Name:   kubernetes.default.svc.cluster.local
+Address: fd00:4000::1
+```
