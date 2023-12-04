@@ -23,3 +23,10 @@ default/etc/kubernetes/tserver/tserver.yaml).
 ./tserver.sh               # Help printout
 ./tserver.sh test > $log   # Run default test 
 ```
+
+## Links
+
+* https://github.com/kubernetes/community/blob/master/contributors/devel/sig-testing/writing-good-e2e-tests.md
+* https://www.kubernetes.dev/blog/2023/04/12/e2e-testing-best-practices-reloaded/
+* https://github.com/kubernetes-sigs/kwok
+* https://github.com/skywind3000/kcp/blob/master/README.en.md

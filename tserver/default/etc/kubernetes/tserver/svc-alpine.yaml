@@ -4,8 +4,8 @@ metadata:
   name: alpine
 spec:
   loadBalancerSourceRanges:
-  - "192.168.2.0/24"
-  - "fd00::c0a8:200/120"
+#  - "192.168.2.0/24"
+#  - "fd00::c0a8:200/120"
 #  - "192.168.1.0/24"
 #  - "fd00::c0a8:100/120"
   ipFamilyPolicy: RequireDualStack
@@ -14,6 +14,26 @@ spec:
   type: LoadBalancer
   allocateLoadBalancerNodePorts: false
   ports:
-  - port: 7001
-    name: nc
-    targetPort: 7007
+  - port: 7007
+#    name: nc
+#    targetPort: 7007
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alpine2
+spec:
+  loadBalancerSourceRanges:
+#  - "192.168.2.0/24"
+#  - "fd00::c0a8:200/120"
+#  - "192.168.1.0/24"
+#  - "fd00::c0a8:100/120"
+  ipFamilyPolicy: RequireDualStack
+  selector:
+    app: alpine2
+  type: LoadBalancer
+  allocateLoadBalancerNodePorts: false
+  ports:
+  - port: 7009
+#    name: nc
+#    targetPort: 700

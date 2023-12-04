@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: alpine-test
+spec:
+  selector:
+    matchLabels:
+      app: alpine-test
+  template:
+    metadata:
+      labels:
+        app: alpine-test
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 3000
+      containers:
+      - name: alpine-test
+        imagePullPolicy: IfNotPresent
+        image: docker.io/uablrek/alpine-test:latest
+        command: ["tail", "-f", "/dev/null"]
+        securityContext:
+          #allowPrivilegeEscalation: false
+          capabilities:
+            add: ["NET_ADMIN"]

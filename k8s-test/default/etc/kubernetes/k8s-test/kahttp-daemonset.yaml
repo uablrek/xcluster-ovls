@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kahttp
+spec:
+  selector:
+    matchLabels:
+      app: kahttp
+  template:
+    metadata:
+      labels:
+        app: kahttp
+    spec:
+      serviceAccount: default
+      containers:
+      - name: kahttp
+        imagePullPolicy: IfNotPresent
+        image: registry.nordix.org/cloud-native/kahttp:latest
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        env:
+          - name: KAHTTP_KEY
+            value: "/etc/cert/server.key"
+          - name: KAHTTP_CERT
+            value: "/etc/cert/server.crt"
+      - name: alpine
+        imagePullPolicy: IfNotPresent
+        image: docker.io/library/alpine:latest
+        command: ["/usr/bin/tail", "-f", "/dev/null"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kahttp
+spec:
+  externalTrafficPolicy: Local
+  selector:
+    app: kahttp
+  ports:
+  - port: 80
+    name: http
+  - port: 443
+    name: https
+  type: LoadBalancer

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: udp-mserver
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: udp-mserver
+  template:
+    metadata:
+      labels:
+        app: udp-mserver
+    spec:
+      containers:
+      - name: mserver
+        imagePullPolicy: IfNotPresent
+        image: registry.nordix.org/cloud-native/mserver:latest
+        ports:
+        - containerPort: 5005
+        securityContext:
+          privileged: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: udp-svc-mserver
+spec:
+  ipFamilyPolicy: RequireDualStack
+  selector:
+    app: udp-mserver
+  ports:
+  - port: 5005
+    protocol: UDP
+    name: nc-udp
+  - port: 5003
+    protocol: UDP
+    name: ctraffic
+  type: NodePort

@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: alpine-hugep
+spec:
+  selector:
+    matchLabels:
+      app: alpine-hugep
+  template:
+    metadata:
+      labels:
+        app: alpine-hugep
+    spec:
+      containers:
+      - name: alpine-test
+        imagePullPolicy: IfNotPresent
+        image: docker.io/library/alpine:latest
+        securityContext:
+          privileged: true
+        command: ["tail", "-f", "/dev/null"]
+        volumeMounts:
+        - name: hugepage-2mi
+          mountPath: /dev/hugepages
+        resources:
+          limits:
+            hugepages-2Mi: 256Mi
+            memory: 256Mi
+          requests:
+            memory: 200Mi
+      volumes:
+        - name: hugepage-2mi
+          emptyDir:
+            medium: HugePages-2Mi

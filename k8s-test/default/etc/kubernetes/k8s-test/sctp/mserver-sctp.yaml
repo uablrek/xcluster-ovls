@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mserver-sctp
+spec:
+  selector:
+    matchLabels:
+      app: mserver-sctp
+  template:
+    metadata:
+      labels:
+        app: mserver-sctp
+    spec:
+      serviceAccount: default
+      nodeSelector:
+        app: mserver-sctp
+      containers:
+      - name: mserver
+        image: registry.nordix.org/cloud-native/mserver:latest
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - mountPath: /pod-init
+            name: pod-init
+      volumes:
+        - name: pod-init
+          configMap:
+            name: mserver-init
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mserver-init
+data:
+  pod-init: |
+    echo "Starting POD $(hostname)"
+    echo "NO_SERVERS=yes" >> /etc/profile
+    ncat -l --sctp -k -e /bin/hostname :: 7002 > /var/log/sctp-hostname.log 2>&1 &
+    ncat -l --sctp -k -e /bin/sh :: 7003 > /var/log/sctp-sh.log 2>&1 &
+    ncat -l --udp -k -e /bin/hostname :: 7005 > /var/log/udp-hostname.log 2>&1 &
+    ncat -l --udp -k -e /bin/sh :: 7006 > /var/log/udp-sh.log 2>&1 &
+    ncat -l -k -e /bin/hostname :: 7008 > /var/log/tcp-hostname.log 2>&1 &
+    ncat -l -k -e /bin/sh :: 7009 > /var/log/tcp-sh.log 2>&1 &
+    ncat -l --sctp -k -e /bin/hostname 0.0.0.0 7002 > /var/log/sctp-hostname.log 2>&1 &
+    ncat -l --sctp -k -e /bin/sh 0.0.0.0 7003 > /var/log/sctp-sh.log 2>&1 &
+    ncat -l --udp -k -e /bin/hostname 0.0.0.0 7005 > /var/log/udp-hostname.log 2>&1 &
+    ncat -l --udp -k -e /bin/sh 0.0.0.0 7006 > /var/log/udp-sh.log 2>&1 &
+    ncat -l -k -e /bin/hostname 0.0.0.0 7008 > /var/log/tcp-hostname.log 2>&1 &
+    ncat -l -k -e /bin/sh 0.0.0.0 7009 > /var/log/tcp-sh.log 2>&1 &

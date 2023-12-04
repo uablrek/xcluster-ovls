@@ -1,0 +1,646 @@
+#! /bin/sh
+##
+## k8s-test_test --
+##
+##   Test script for k8s-test executed in xcluster.
+##
+## Commands;
+##
+
+prg=$(basename $0)
+dir=$(dirname $0); dir=$(readlink -f $dir)
+me=$dir/$prg
+tmp=/tmp/${prg}_$$
+test -n "$DOMAIN" || DOMAIN=xcluster
+yamld=/etc/kubernetes/k8s-test
+
+
+die() {
+	echo "ERROR: $*" >&2
+	rm -rf $tmp
+	exit 1
+}
+help() {
+	grep '^##' $0 | cut -c3-
+	rm -rf $tmp
+	exit 0
+}
+test -n "$1" || help
+echo "$1" | grep -qi "^help\|-h" && help
+
+log() {
+	echo "$prg: $*" >&2
+}
+dbg() {
+	test -n "$__verbose" && echo "$prg: $*" >&2
+}
+
+cmd_tcase_check_namespaces() {
+	test_namespaces $1
+}
+cmd_tcase_check_nodes() {
+	test_nodes
+}
+##   tcase_start_servers - Start servers
+cmd_tcase_start_servers() {
+	tcase "Start servers"
+	apply_k8s $yamld
+
+	if ipv6base; then
+		# Main family; IPv6
+		assign-lb-ip -svc mserver -ip 1000::
+		assign-lb-ip -svc mserver-udp -ip 1000::
+		assign-lb-ip -svc kahttp -ip 1000::80
+	else
+		# Main family; IPv4
+		assign-lb-ip -svc mserver -ip 10.0.0.0
+		assign-lb-ip -svc mserver-udp -ip 10.0.0.0
+		assign-lb-ip -svc kahttp -ip 10.0.0.80
+	fi
+
+	assign-lb-ip -svc mserver-preferdual-lb -ip 10.0.0.2,1000::2
+	assign-lb-ip -svc kahttp-preferdual-lb -ip 10.0.0.81,1000::81
+	assign-lb-ip -svc kahttp-ipv4-lb -ip 10.0.0.82
+	assign-lb-ip -svc kahttp-ipv6-lb -ip 1000::82
+	assign-lb-ip -svc mserver-affinity -ip 10.0.0.60,1000::60
+	assign-lb-ip -svc mserver-ipv6-lb -ip 1000::1
+	assign-lb-ip -svc mserver-ipv4-lb -ip 10.0.0.1
+	assign-lb-ip -svc mserver-dual-srange -ip 10.0.0.8,1000::8
+
+	test_daemonset mserver 180
+	test_daemonset mserver-hostnet 180
+	test_deployment mserver-deployment 180
+	test_daemonset kahttp 180
+}
+cmd_tcase_start_sctp() {
+	tcase "Start SCTP"
+	kubectl label nodes --all app=mserver-sctp || tdie
+	kubectl label nodes vm-002 app- || tdie
+	kubectl apply -f /etc/kubernetes/k8s-test/sctp || tdie
+	assign-lb-ip -svc mserver-sctp -ip 10.0.0.77,1000::77 || tdie
+	assign-lb-ip -svc mserver-sctp-udp -ip 10.0.0.78,1000::78 || tdie
+	assign-lb-ip -svc mserver-sctp-tcp -ip 10.0.0.79,1000::79 || tdie
+	test_daemonset mserver-sctp 180
+}
+cmd_tcase_set_route() {
+	tcase "Set route $1 via $2"
+	test -n "$2" || tdie "Parameter missing"
+	if echo "$1" | grep -q :; then
+		ip -6 route replace $1 via $2 || tdie
+	else
+		ip route replace $1 via $2 || tdie
+	fi
+	return 0
+}
+cmd_tcase_mconnect() {
+	local pod=$2
+	test -z "$2" && pod="main netns"
+	tcase "Mconnect to [$1] from [$pod]"
+	test -n "$1" || tdie "No dest"
+
+	pushv 60 10 2
+	if test "$pod" = "main netns"; then
+		tex "do_mconnect $1:5001 100"
+		return
+	fi
+
+	pod=$(get_pod $pod)
+	tlog "From POD $pod"
+	echo "$pod" | grep -q null && tdie "Pod not found"
+	$kubectl exec $pod -- nslookup $1 || tdie "nslookup $1"
+	tex "mconnect_from_pod $pod $1"
+}
+mconnect_from_pod() {
+	local pod=$1
+	local adr=$2
+	$kubectl exec $pod -- mconnect -address $adr:5001 -nconn 100 -output json > \
+		/tmp/mconnect.out || return
+	check_mconnect_result /tmp/mconnect.out
+}
+
+cmd_tcase_podip() {
+	tcase "Check podIP"
+	local main_family=IPv4
+	ipv6base && main_family=IPv6
+	local podIP=$(kubectl get pod -l app=mserver -o json | jq -r .items[0].status.podIP)
+	tlog "podIP; $podIP"
+	test "$(family $podIP)" = "$main_family" || tdie "podIP not of main family"
+}
+
+cmd_tcase_dual_services() {
+	local main_family=IPv4
+	ipv6base && main_family=IPv6
+	tcase "Check addresses of services. Main family; $main_family"
+	local result=OK
+	check_family kubernetes $main_family || result=kubernetes
+	check_family mserver-deployment $main_family || result=mserver-deployment
+	check_family mserver-ipv4 IPv4 || result=mserver-ipv4
+	check_family mserver-ipv6 IPv6 || result=mserver-ipv6
+
+	check_family_dual mserver-preferdual || result=mserver-preferdual
+	check_family_dual mserver-preferdual-lb || result=mserver-preferdual-lb
+	
+	test "$result" = "OK" || tdie $result
+}
+
+cmd_tcase_headless_services() {
+	local main_family=IPv4
+	ipv6base && main_family=IPv6
+	tcase "Check addresses of headless services. Main family; $main_family"
+	if test $(k8s_ver) -lt 1019000; then
+		tlog "SKIPPED; Headless tests for k8s < v1.19 (endpointslices in alpha)"
+		return 0
+	fi
+	local result=OK
+	check_headless mserver-headless $main_family || result=mserver-headless
+	check_headless mserver-headless-ipv4 IPv4 || result=mserver-headless-ipv4
+	check_headless mserver-headless-ipv6 IPv6 || result=mserver-headless-ipv6
+
+	# Hostnet <v1.20 work porly since nodes can only have one address.
+
+	check_family_dual hostnet-dual || result=hostnet-dual
+	check_headless hostnet-headless-ipv4 IPv4 || result=hostnet-headless-ipv4
+	check_headless hostnet-headless-ipv6 IPv6 || result=hostnet-headless-ipv6
+	check_headless hostnet-headless-dual dual || result=hostnet-headless-dual
+
+	test "$result" = "OK" || tdie $result
+}
+check_headless() {
+	local nipv4=0 nipv6=0 a
+	for a in $(endpointslice_addresses $1); do
+		if echo $a | grep -q : ; then
+			nipv6=$((nipv6 + 1))
+		else
+			nipv4=$((nipv4 + 1))
+		fi
+	done
+	tlog "Headless service $1. Adr ipv4=$nipv4, ipv6=$nipv6"
+	case $2 in
+		IPv4) test $nipv4 -gt 0 -a $nipv6 -eq 0;;
+		IPv6) test $nipv4 -eq 0 -a $nipv6 -gt 0;;
+		dual) test $nipv4 -gt 0 -a $nipv6 -gt 0;;
+	esac
+}
+
+# Prints all endpointslice addresses for a service
+endpointslice_addresses() {
+	$kubectl get endpointslices -l kubernetes.io/service-name=$1 -o json \
+		| jq -r '.items[].endpoints[].addresses[0]'
+}
+
+get_clusterip() {
+	$kubectl get svc $1 -o json | jq -r .spec.clusterIP
+}
+family() {
+	if echo "$1" | grep -q : ; then
+		echo IPv6
+	else
+		echo IPv4
+	fi
+}
+check_family() {
+	local a=$(get_clusterip $1)
+	tlog "Service $1 clusterIP=$a"
+	test "$a" = "None" && tdie "check_family for headless service [$1]"
+	test "$(family $a)" = "$2" && return 0
+	tlog "Wrong family; $1 clusterIP=$a"
+	return 1
+}
+
+check_family_dual() {
+	tlog "Dual-stack service $1"
+	local a=$(get_clusterip $1)
+	local families=":"
+	for a in $($kubectl get svc -o json $1 | jq -r .spec.clusterIPs[]); do
+		families="$families$(family $a):"
+		#tlog "  Found clusterIP $a"
+	done
+	#tlog "  Families $families"
+	if ! echo $families | grep -q ":IPv4:"; then
+		tlog "IPv4 address is missing"
+		return 1
+	fi
+	if ! echo $families | grep -q ":IPv6:"; then
+		tlog "IPv6 address is missing"
+		return 1
+	fi
+
+	if ! ensure_coredns_ver 1008001; then
+		tlog "SKIPPED; DNS query tests"
+		return 0
+	fi
+
+	return 0
+}
+
+# Convert a version; v1.2.3 to a number like 1002003
+cversion() {
+	local v=$(echo $1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+	test -n "$v" || v="$(echo $1 | grep -oE '[0-9]+\.[0-9]+').0"
+	local v1=$(echo $v | cut -d. -f1)
+	local v2=$(echo $v | cut -d. -f2)
+	local v3=$(echo $v | cut -d. -f3)
+	printf "%d%03d%03d\n" $v1 $v2 $v3
+}
+k8s_ver() {
+	if kubectl version --short > /dev/null 2>&1; then
+		cversion "$(kubectl version --short | grep Server)"
+	else
+		cversion "$(kubectl version | grep Server)"
+	fi
+}
+ensure_coredns_ver() {
+	local corednsver=$(coredns -version | grep CoreDNS)
+	if test $(cversion $corednsver) -lt $1; then
+		tlog "WARNING; Dual-stack unsupported in $corednsver"
+		return 1
+	fi
+	return 0
+}
+
+k8s_unpack() {
+	local f=/root/newk8s.tar
+	test -r $f || tdie "Not readable [$f]"
+	tar -C / -xf $f || tdie "Untar [$f]"
+}
+cmd_tcase_upgrade_master() {
+	tcase "Upgrade master"
+	k8s_unpack
+	killall kube-apiserver kube-controller-manager kube-scheduler kubelet kube-proxy
+}
+cmd_tcase_upgrade_worker() {
+	tcase "Upgrade worker"
+	k8s_unpack
+	killall kubelet kube-proxy
+}
+
+cmd_tcase_ctraffic_start() {
+	tcase "Start traffic in background [$@]"
+	tlog "Ctraffic version [$(ctraffic -version)]"
+	test -n "$__out" || __out=/tmp/ctraffic.out
+	ctraffic $@ -stats all > $__out 2> /dev/null &
+}
+cmd_tcase_ctraffic_wait() {
+	test -n "$__timeout" || __timeout=60
+	pushv $__timeout
+	tcase "Wait for all ctraffic processes to stop ($__timeout)"
+	tex check_ctraffic
+}
+check_ctraffic() {
+	if ps www | grep -v grep | grep -F 'ctraffic '; then
+		tlog "Ctraffic still running..."
+		return 1
+	fi
+	return 0
+}
+cmd_tcase_ctraffic_kill() {
+	tcase "Kill ctraffic"
+	killall ctraffic
+	return 0
+}
+cmd_tcase_ctraffic_check() {
+	tcase "Check ctraffic output [$1]"
+	local local out=$1 val
+	val=$(cat $out | jq .FailedConnections)
+	tlog "FailedConnections=$val"
+	test "$__no_fail" != "yes" -a $val -gt 0 && tdie "FailedConnections"
+	val=$(cat $out | jq .FailedConnects)
+	tlog "FailedConnects=$val"
+	test "$__no_fail" != "yes" -a $val -gt 0 && tdie "FailedConnects"
+	val=$(cat $out | jq .Received)
+	tlog "Received=$val"
+	ctraffic -analyze hosts -stat_file $out 1>&2
+	return 0
+}
+cmd_tcase_kill_pod() {
+	test -n "$__app" || __app=app=mserver-deployment
+	local pod=$($kubectl get pods -l $__app -o name | head -1)
+	tcase "Kill [$pod]"
+	$kubectl delete $pod --grace-period=0 || tdie "$kubectl delete"
+}
+cmd_tcase_vip_routes() {
+	tcase "Setup VIP routes (ECMP)"
+	if test "$TOPOLOGY" = "backend"; then
+		tlog "Using TOPOLOGY=backend"
+		vip_route 3
+		sed -i -e 's,192.168.1.1,192.168.3.1,' $KUBECONFIG
+	else
+		vip_route
+	fi
+}
+
+cmd_tcase_external_traffic() {
+	tcase "External traffic"
+	if ipv6base; then
+		external_traffic [1000::]:5001
+	else
+		external_traffic 10.0.0.0:5001
+	fi
+
+	external_traffic 10.0.0.1:5001
+	external_traffic [1000::1]:5001
+	external_traffic 10.0.0.2:5001
+	external_traffic [1000::2]:5001
+}
+##   source_ranges_start - Setup service with loadBalancerSourceRanges
+cmd_tcase_source_ranges_start() {
+	tcase "Setup service with loadBalancerSourceRanges"
+	$kubectl apply -f /etc/kubernetes/k8s-test/mserver-deployment.yaml \
+		|| tdie
+	$kubectl apply -f /etc/kubernetes/k8s-test/dual/mserver-svc-srange.yaml \
+		|| tdie
+	assign-lb-ip -svc mserver-dual-srange -ip 10.0.0.8,1000::8
+	test_deployment mserver-deployment 180
+}
+##   source_ranges_access - Access to a service with loadBalancerSourceRanges
+cmd_tcase_source_ranges_access() {
+	tcase "Access to a service with loadBalancerSourceRanges"
+	external_traffic 10.0.0.8:5001
+	external_traffic [1000::8]:5001
+}
+##   neg_source_ranges_access - Negative test with loadBalancerSourceRanges
+cmd_tcase_neg_source_ranges_access() {
+	tcase "Negative test with loadBalancerSourceRanges"
+	mconnect -address 10.0.0.8:5001 -srccidr 10.200.200.1/32 && \
+		tdie "Access outside loadBalancerSourceRanges works!"
+	return 0
+}
+
+external_traffic() {
+	tlog "Traffic to; $1"
+	tex do_mconnect $1 || tdie "mconnect to; $1"
+}
+
+cmd_tcase_external_http() {
+	tcase "External http traffic"
+	if ipv6base; then
+		kahttp_to http://[1000::80]
+	else
+		kahttp_to http://10.0.0.80
+	fi
+}
+kahttp_to() {
+	tlog "Traffic to; $1"
+	mkdir -p $tmp
+	curl -s --http1.1 -D - $1 > $tmp/out || tdie "$1"
+	grep -q "200 OK" $tmp/out || tdie "Not OK"
+	local adr
+	for adr in $(global_ips eth1); do
+		grep -F 'RemoteAddr:' $tmp/out
+		grep -F 'RemoteAddr:' $tmp/out | grep -q $adr && return 0
+	done
+	tdie "Src not preserved; $(grep -F 'RemoteAddr:' $tmp/out)"
+}
+
+global_ips() {
+	ip -json addr show dev $1 | \
+		jq -r '.[]|select(.addr_info)|.addr_info[]|select(.scope == "global")|.local'
+}
+
+cmd_tcase_metrics_server() {
+	tcase "Metrics-server and kubectl top"
+	kubectl="kubectl -n kube-system"
+	test_deployment metrics-server
+	kubectl=kubectl
+	pushv 120
+	tex metrics_server_status || tdie metrics_server_status
+	tex metrics_server_top || tdie metrics_server_top
+	popv
+	return 0
+}
+metrics_server_status() {
+	kubectl get apiservice v1beta1.metrics.k8s.io -o json | \
+		jq -r .status.conditions[].status 2>&1 | grep True
+}
+metrics_server_top() {
+	kubectl top nodes 2>&1 | ogrep error && return 1
+	return 0
+}
+
+cmd_tcase_kube_proxy_sync() {
+	tcase "Check kube-proxy sync"
+	mkdir -p $tmp
+	local out=/tmp/kube-proxy.log
+	local log=/var/log/kube-proxy.log
+	tex "test -r $log" || tdie
+	pushv 40					# (assuming sync interval 30s)
+	tex "tail $log | grep -B1 'sync-runner: ran, next possible' > $out" || tdie
+	local last=$(head -1 $out | cut -d' ' -f2 | cut -d. -f1)
+	last=$(date -u -d $last +%s)
+	local now=$(date +%s)
+	local period=$(grep -o 'periodic in.*' $out)
+	tlog "Last sync $((now-last))s ago, $period"
+	tlog "Wait for next sync..."
+	tail -0 -f $log > $out &
+	tex "grep 'sync-runner: ran, next possible' $out" || tdie
+	tlog "Got sync"
+	cat $out
+	grep -i error $out && tdie "Found errors"
+	grep -i warn $out && tdie "Found warnings"
+	return 0
+}
+
+cmd_tcase_kube_proxy_restart() {
+	tcase "Kube-proxy re-configure/restart"
+	local cfg=/etc/kubernetes/kube-proxy.config
+	local period=15s
+	sed -i -e "s,syncPeriod: 30s,syncPeriod: $period," $cfg
+	rm -f /var/log/kube-proxy.log
+	killall kube-proxy
+}
+
+cmd_tcase_add_srccidr() {
+	tcase "Add ($PREFIX:)10.200.200.0/24 to dev lo"
+	ip addr add 10.200.200.0/24 dev lo || tdie
+	ip -6 addr add $PREFIX:10.200.200.0/120 dev lo || tdie
+	ip -6 ro add local $PREFIX:10.200.200.0/120 dev lo
+	sysctl -w net.ipv4.ip_nonlocal_bind=1
+	sysctl -w net.ipv6.ip_nonlocal_bind=1
+	if test "$__ecmp" != "yes"; then
+		tlog "Disable ECMP"
+		ip ro replace 10.0.0.0/24 via 192.168.1.2
+		ip -6 ro replace 1000::/120 via $PREFIX:192.168.1.2
+	fi
+	# Create address files
+	local i=0 out=/tmp/addresses
+	while test $i -lt 255; do
+		echo "10.200.200.$i:7000" >> $out-4-fixport
+		echo "[$PREFIX:10.200.200.$i]:7000" >> $out-6-fixport
+		echo "10.200.200.$i:$((i + 4000))" >> $out-4-port
+		echo "[$PREFIX:10.200.200.$i]:$((i + 6000))" >> $out-6-port
+		echo "10.200.200.$i" >> $out-4
+		echo "[$PREFIX:10.200.200.$i]" >> $out-6
+		i=$((i + 1))
+	done
+}
+
+cmd_tcase_affinity() {
+	local adr=10.0.0.60 srccidr
+	test -n "$1" && adr=$1
+	tcase "Test Service session affinity; $adr"
+	if test "$__nrouters" != "1"; then
+		tlog "SKIPPED: nrouters=$__nrouters"
+		return 0
+	fi
+	if echo $adr | grep -q :; then
+		adr="[$adr]"
+		srccidr='$PREFIX:10.200.200.$n/128'
+	else
+		srccidr='10.200.200.$n/32'
+	fi
+	local n src srv1 srv2
+	for n in $(seq 1 10); do
+		eval "src=$srccidr"
+		srv1=$(cmd_affinity_mconnect $adr:5001 $src) || tdie
+		srv2=$(affinity_ctraffic $adr:5003 $src) || tdie
+		tlog "Responses from $srv1 and $srv2"
+		test "$srv1" = "$srv2" || tdie "Servers differs $srv1 and $srv2"
+	done
+}
+cmd_affinity_mconnect() {
+	local adr=$1
+	local srccidr=$2
+	mkdir -p $tmp
+	local out=$tmp/out
+	mconnect -address $adr -nconn 100 -output json -srccidr $srccidr > $out
+	local v
+	v=$(cat $out | jq -r .failed_connects)
+	test "$v" -eq 0 || tdie "failed_connects $v"
+	v=$(cat $out | jq -r '.hosts|keys[]' | wc -w)
+	test "$v" -eq 1 || tdie "Multiple servers $v"
+	local target=$(cat $out | jq -r '.hosts|keys[]')
+	v=$(cat $out | jq -r ".hosts.\"$target\"")
+	test $v -eq 100 || tdie "Not all connects $v"
+	echo $target
+}
+affinity_ctraffic() {
+	mkdir -p $tmp
+	local out=$tmp/out
+	local src=$(echo $2 | cut -d/ -f1)
+	echo "::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::"\
+		| nc -s $src $1 > $out || tdie
+	cut -d: -f1 < $out
+}
+
+##   tcase_scale <n> - Scale mserver-deployment
+cmd_tcase_scale() {
+	tcase "Scale mserver-deployment to [$1]"
+	test -n "$1" || tdie "No scaling factor"
+	$kubectl scale deployment --replicas=$1 mserver-deployment || tdie scale
+	test_deployment mserver-deployment 30
+}
+##   tcase_start_alpine_test - Start the alpine-test image
+cmd_tcase_start_alpine_test() {
+	tcase "Start the alpine-test image"
+	$kubectl apply -f /etc/kubernetes/k8s-test/alpine-test.yaml || tdie
+	test_daemonset alpine-test 30
+}
+##   tcase_check_setcap - Test get/setcap in a container
+cmd_tcase_check_setcap() {
+	local pod=$(get_pod app=alpine-test)
+	tcase "Test get/setcap in [$pod]"
+	$kubectl exec $pod -- id | ogrep "uid=1000" || tdie "Should be non-root"
+	$kubectl exec $pod -- getcap /sbin/ip | ogrep 'cap_net_admin=eip' \
+		|| tdie "getcap"
+	$kubectl exec $pod -- ip addr add 10.10.10.10/32 dev lo || tdie "ip addr"
+}
+##   tcase_negative_access <adr> - Check that telnet to the address NOT work
+cmd_tcase_negative_access() {
+	tcase "Test that access NOT works to [$1]"
+	test -n "$1" || tdie "Parameter Missing"
+	echo "" | nc -w1 $1 22 > /dev/null && tdie "Access works to [$1]"
+	return 0
+}
+##   tcase_mount_hugep - Mount the hugepages fs
+cmd_tcase_mount_hugep() {
+	tcase "Mount the hugepages fs"
+	local d=/dev/hugepages
+	mkdir -p $d
+    mount -t hugetlbfs nodev $d || tdie
+}
+##   tcase_start_hugep - Create PODs that mounts hugepages
+cmd_tcase_start_hugep() {
+	tcase "Create PODs that mounts hugepages"
+	$kubectl apply -f /etc/kubernetes/k8s-test/alpine-hugep.yaml || tdie
+	test_daemonset alpine-hugep 60
+}
+##   mserver_udp - Start mserver and udp-svc-mserver
+cmd_tcase_mserver_udp() {
+	tcase "Start mserver and udp-svc-mserver"
+	$kubectl apply -f /etc/kubernetes/k8s-test/svc-udp/mserver-svc-udp.yaml || tdie
+	test_deployment udp-mserver 60
+}
+##   ctraffic_udp - Ctraffic over UDP
+cmd_tcase_ctraffic_udp() {
+	tcase "Ctraffic over UDP"
+	local nodeport=$($kubectl get svc udp-svc-mserver -o json | jq '.spec.ports[]|select(.name == "ctraffic").nodePort')
+	echo "$nodeport" | grep -E '^[0-9]+$' || tdie "Invalid nodeport [$nodeport]"
+	#mkdir -p $tmp
+	if ! ctraffic -udp -monitor -stats all -address 192.168.1.2:$nodeport $@ > /tmp/out; then
+		cat /tmp/out | jq 1>&2
+	fi
+	ctraffic -analyze hosts -stat_file /tmp/out 1>&2
+}
+##   test tcase_mserver2 [replicas]
+##     mserver deployment and a svc, and NOTHING ELSE
+cmd_tcase_mserver2() {
+	local replicas=8
+	if test -n "$1"; then
+		replicas=$1
+		sed -i -e "s,replicas: 8,replicas: $replicas," $yamld/mserver2.yaml
+	fi
+	tcase "Start mserver2 deployment and svc ($replicas)"
+	$kubectl create -f $yamld/mserver2.yaml || tdie create
+	assign-lb-ip -svc mserver2 -ip 10.0.0.10,$PREFIX:10.0.0.10
+	test_deployment mserver2 180
+}
+##   tcase_nf_conntrack_tcp_be_liberal - set the sysctl
+cmd_tcase_nf_conntrack_tcp_be_liberal() {
+	tcase "nf_conntrack_tcp_be_liberal=1"
+	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=1
+}
+##   tcase_xmconnect [address] [nconn] [targets] [margin]
+##     External mconnect. "expected-conns" is expected conns per POD
+cmd_tcase_xmconnect() {
+	tcase "Mconnect $@"
+	pushv 60 10 2
+	tex "do_mconnect $@"
+}
+cmd_tcase_conntrack_size() {
+	local s=20000
+	test -n "$1" && s=$1
+	tcase "Set conntrack size to $s"
+	echo $s > /proc/sys/net/nf_conntrack_max
+}
+
+. /etc/profile
+test -n "$PREFIX" || PREFIX=1000::1
+. /usr/lib/xctest
+indent='  '
+
+##
+# Get the command
+cmd=$1
+shift
+grep -q "^cmd_$cmd()" $0 || die "Invalid command [$cmd]"
+
+while echo "$1" | grep -q '^--'; do
+	if echo $1 | grep -q =; then
+		o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
+		v=$(echo "$1" | cut -d= -f2-)
+		eval "$o=\"$v\""
+	else
+		o=$(echo "$1" | sed -e 's,-,_,g')
+		eval "$o=yes"
+	fi
+	shift
+done
+unset o v
+long_opts=`set | grep '^__' | cut -d= -f1`
+
+# Execute command
+trap "die Interrupted" INT TERM
+cmd_$cmd "$@"
+status=$?
+rm -rf $tmp
+exit $status

@@ -6,12 +6,13 @@ spec:
   selector:
     matchLabels:
       app: alpine
-  replicas: 4
+  replicas: 1
   template:
     metadata:
       labels:
         app: alpine
     spec:
+      hostNetwork: true
       containers:
       - name: alpine
         image: alpine:latest
@@ -20,4 +21,28 @@ spec:
         ports:
         - name: nc
           containerPort: 7007
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpine2
+spec:
+  selector:
+    matchLabels:
+      app: alpine2
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: alpine2
+    spec:
+      hostNetwork: true
+      containers:
+      - name: alpine
+        image: alpine:latest
+        imagePullPolicy: IfNotPresent
+        command: ["nc", "-lk", "-p", "7009", "-e", "hostname"]
+        ports:
+        - name: nc
+          containerPort: 7009
 

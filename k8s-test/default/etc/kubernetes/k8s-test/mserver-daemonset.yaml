@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mserver
+spec:
+  selector:
+    matchLabels:
+      app: mserver
+  template:
+    metadata:
+      labels:
+        app: mserver
+    spec:
+      serviceAccount: default
+      containers:
+      - name: mserver
+        imagePullPolicy: IfNotPresent
+        image: registry.nordix.org/cloud-native/mserver:latest
+        ports:
+        - containerPort: 5001
+        securityContext:
+          privileged: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mserver
+spec:
+  selector:
+    app: mserver
+  ports:
+  - port: 5001
+    name: mconnect
+  - port: 5003
+    name: ctraffic
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mserver-udp
+spec:
+  selector:
+    app: mserver
+  ports:
+  - port: 5001
+    protocol: UDP
+    name: mconnect-udp
+  - port: 5003
+    protocol: UDP
+    name: ctraffic-udp
+  type: LoadBalancer

@@ -1,0 +1,92 @@
+# This is an example of PODs with multiple labels and howto define a
+# Deployment with match for just one of them.  Services are then
+# defined to select either app, or a group of them.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-1
+spec:
+  selector:
+    matchExpressions:
+      - {key: app, operator: In, values: [app-1]}
+  replicas: 6
+  template:
+    metadata:
+      labels:
+        app: app-1
+        group: a
+    spec:
+      containers:
+      - name: mserver
+        imagePullPolicy: IfNotPresent
+        image: registry.nordix.org/cloud-native/mserver:latest
+        ports:
+        - containerPort: 5001
+        securityContext:
+          privileged: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-2
+spec:
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [app-2]
+  replicas: 6
+  template:
+    metadata:
+      labels:
+        app: app-2
+        group: a
+    spec:
+      containers:
+      - name: mserver
+        imagePullPolicy: IfNotPresent
+        image: registry.nordix.org/cloud-native/mserver:latest
+        ports:
+        - containerPort: 5001
+        securityContext:
+          privileged: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-1
+spec:
+  selector:
+    app: app-1
+  ports:
+  - port: 5001
+    name: mconnect
+  - port: 5003
+    name: ctraffic
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-2
+spec:
+  selector:
+    app: app-2
+  ports:
+  - port: 5001
+    name: mconnect
+  - port: 5003
+    name: ctraffic
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: group-a
+spec:
+  selector:
+    group: a
+  ports:
+  - port: 5001
+    name: mconnect
+  - port: 5003
+    name: ctraffic

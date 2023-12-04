@@ -34,7 +34,10 @@ A 40-node K8s cluster started in less than 10s:
 
 <img src="xcluster40.svg" width="50%" />
 
-The PC has an Intel i9 CPU, and 64G RAM.
+The PC has an Intel i9 CPU, and 64G RAM. A reason for the fast start
+is that no container images are loaded. The Kubernetes servers are
+pre-loaded on the image, and are started from scripts.
+
 
 
 ### Installation
@@ -93,10 +96,6 @@ cdo test-template
 kubectl get nodes
 xc stop
 ```
-
-A reason for the fast start is that no container images are
-loaded. The Kubernetes servers are pre-loaded on the image, and are
-started from scripts.
 
 
 ### Overlays
@@ -205,7 +204,7 @@ There are several variables that are used in tests, for example:
 
 * xcluster_TZ - Set the time-zone ([ovl/timezone](https://github.com/Nordix/xcluster/tree/master/ovl/timezone))
 * xcluster_DOMAIN - The domain is "xcluster" by default, but many programs (wrongly) assumes "cluster.local"
-* xcluster_FEATURE_GATES - Comma separated
+* xcluster_FEATURE_GATES - Comma separated, no spaces
 * xcluster_BASE_FAMILY - IPv4 (default), or IPv6
 * xcluster_PROXY_MODE - "ipvs" (default), "iptables", or "disabled"
 
@@ -213,7 +212,7 @@ Example:
 ```
 export xcluster_TZ=EST+5EDT,M3.2.0/2,M11.1.0/2
 xcluster_BASE_FAMILY=IPv6 xcluster_PROXY_MODE=disabled xcluster_DOMAIN=cluster.local \
- ./test-template.sh test start_empty k8s-cni-cilium containerd > $log
+ ./test-template.sh test start_empty k8s-cni-cilium > $log
 # On a cluster VM
 # date
 Thu Nov 23 15:19:26 EST 2023

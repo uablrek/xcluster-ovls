@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mserver-hostnet
+spec:
+  selector:
+    matchLabels:
+      app: mserver-hostnet
+  template:
+    metadata:
+      labels:
+        app: mserver-hostnet
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: mserver-hostnet
+        image: registry.nordix.org/cloud-native/mserver:latest
+        ports:
+        - containerPort: 5001
+        securityContext:
+          privileged: true
