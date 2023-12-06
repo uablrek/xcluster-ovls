@@ -80,7 +80,7 @@ cmd_get_nginx_manifests() {
 	local src=$GOPATH/src/github.com/nginxinc/nginx-gateway-fabric/deploy/manifests
 	test -d $src || die "Not cloned"
 	local dst=$dir/nginx-gateway-fabric/etc/kubernets/nginx-gateway-fabric
-	rm -r $dst; mkdir -p $dst
+	rm -rf $dst; mkdir -p $dst
 	cp -r $src/nginx-gateway.yaml $src/crds $dst
 }
 ##   get_manifests [--ver=]

@@ -33,15 +33,14 @@ images lreg_preload nginx-gateway-fabric
 
 ### Problem
 
-Nginx doesn't start:
+Nginx doesn't become ready:
 ```
 pod=$(kubectl get pods -n nginx-gateway -o name | head -1)
 kubectl logs -n nginx-gateway $pod -c nginx
-2023/12/02 08:50:04 [emerg] 23#23: io_setup() failed (38: Function not implemented)
+kubectl exec -it -c nginx -n nginx-gateway $pod -- sh
+wget -O- http://127.0.0.1:8081/readyz
+wget: server returned error: HTTP/1.1 500 Internal Server Error
 ```
-
-A description found [here](
-https://forum.turris.cz/t/nginx-errors-in-log-due-to-missing-kernel-syscall/14798), but `setitimer` is in the kernel, as is `epoll`. Why does this happen??
 
 
 
