@@ -6,7 +6,7 @@ spec:
   ipFamilyPolicy: RequireDualStack
   selector:
     app: tserver
-  type: LoadBalancer
+  #type: LoadBalancer
   #allocateLoadBalancerNodePorts: false
   #externalTrafficPolicy: Local
   #internalTrafficPolicy: Local
