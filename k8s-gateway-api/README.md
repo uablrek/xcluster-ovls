@@ -24,23 +24,15 @@ seem to be closest to a reference implementation. Install with [manifests](
 https://docs.nginx.com/nginx-gateway-fabric/installation/installing-ngf/manifests/):
 
 ```
-git clone --depth 1 https://github.com/nginxinc/nginx-gateway-fabric.git --branch v1.0.0 \
+git clone --depth 1 https://github.com/nginxinc/nginx-gateway-fabric.git \
   $GOPATH/src/github.com/nginxinc/nginx-gateway-fabric
 ./k8s-gateway-api.sh get_nginx_manifests
 images lreg_preload nginx-gateway-fabric
 ./k8s-gateway-api.sh test start_nginx > $log
 ```
 
-### Problem
-
-Nginx doesn't become ready:
-```
-pod=$(kubectl get pods -n nginx-gateway -o name | head -1)
-kubectl logs -n nginx-gateway $pod -c nginx
-kubectl exec -it -c nginx -n nginx-gateway $pod -- sh
-wget -O- http://127.0.0.1:8081/readyz
-wget: server returned error: HTTP/1.1 500 Internal Server Error
-```
+Since we clone the "main" branch we will use the `edge` version of
+nginx-gateway-fabric. This seem to work with gateway-api v1.0.0.
 
 
 
