@@ -148,9 +148,11 @@ test_start() {
 ##   test --replicas=1 start_mini_svc
 ##     Start cluster with the "tserver-mini" svc and VIP route to vm-002
 test_start_mini_svc() {
-	test_start $@
+	test_start_empty $@
+	test -n "$__replicas" || __replicas=1
 	otc 1 "create_1svc tserver-mini"
 	otcr "vip_route 192.168.1.2"
+	otc 1 "start_tserver --replicas=$__replicas --nodes=$__nodes"
 }
 ##   test start_narrow_svc [--replicas=4]
 ##     Start cluster with svc's and VIP route to vm-002
