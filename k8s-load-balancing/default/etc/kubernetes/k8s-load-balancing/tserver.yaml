@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tserver
+spec:
+  replicas: 100
+  selector:
+    matchLabels:
+      app: tserver
+  template:
+    metadata:
+      labels:
+        app: tserver
+    spec:
+      #hostNetwork: true
+      nodeSelector:
+        #example.com/server: tserver
+      enableServiceLinks: false
+      containers:
+      - name: tserver
+        image: docker.io/uablrek/tserver:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        env:
+        - name: SERVERS
+          value: "mconnect,kahttp"
+        ports:
+        - name: mconnect
+          containerPort: 5001
+        - name: "kahttp"
+          containerPort: 8080
+        - name: "kahttps"
+          containerPort: 8443
