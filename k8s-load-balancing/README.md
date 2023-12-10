@@ -124,6 +124,7 @@ You can also connect to a `nodePort`, but be aware:
 generator. Resources like ephemeral ports and conntrack entries may be
 exhausted.
 
+Install [mconnect](https://github.com/Nordix/mconnect) in your $PATH, then:
 ```
 # Get a node address. Here a KinD cluster named "nftables" is assumed
 docker inspect nftables-control-plane | jq -r .[0].NetworkSettings.Networks.kind.IPAddress
