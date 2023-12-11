@@ -39,10 +39,12 @@ dbg() {
 cmd_env() {
 	test "$envread" = "yes" && return 0
 	envread=yes
+	test "$__nvm" = "X" && export __nvm=10
+	test -n "$__nrouters" || export __nrouters=1
 	test -n "$__mode" || __mode=ipvs
 	test -n "$__replicas" || __replicas=100
 	if test "$cmd" = "env"; then
-		opts="mode|replicas"
+		opts="mode|replicas|nvm"
 		set | grep -E "^(__($opts))="
 		return 0
 	fi
@@ -112,8 +114,6 @@ cmd_test() {
 ##     Start empty cluster. Setup source ranges
 test_start_empty() {
 	cd $dir
-	test -n "$__nrouters" || export __nrouters=1
-	test "$__nvm" = "X" && export __nvm=10
 	export xcluster_PREFIX=$PREFIX
 	xcluster_start network-topology . $@
     otcwp conntrack_size
@@ -138,20 +138,28 @@ test_start() {
 	otc 1 "create_1svc tserver 10.0.0.1"
 	otc 1 "start_server --replicas=$__replicas"
 }
-##   test start_cilium
+##   test start_cilium [--xmem=1024]
 ##     Start cluster with ovl functions and the Cilium CNI-plugin
 test_start_cilium() {
 	export xcluster_PROXY_MODE=disabled
-	export __mem=$((__mem + 1024))
-	export __mem1=$((__mem1 + 1024))
+	test -n "$__xmem" || __xmem=1024
+	export __mem=$((__mem + __xmem))
+	export __mem1=$((__mem1 + __xmem))
 	test_start_empty k8s-cni-cilium $@
+	test "$__ecmp" = "yes" || otcr "vip_routes 192.168.1.2"
 	otc 1 "create_1svc tserver 10.0.0.1"
 	otc 1 "start_server --replicas=$__replicas"
+}
+##   test conntrack_clear
+##     Clear conntrack tables in a running cluster
+test_conntrack_clear() {
+	otcwp conntrack_clear
+	otcr conntrack_clear
 }
 ##   test external [--tag=]
 ##     Test distribution from an external machine, vm-201
 test_external() {
-	test "$__no_start" = "yes" || test_start
+	test "$__no_start" = "yes" || test_start $@
 	test -n "$__tag" || __tag=$xcluster_PROXY_MODE
 	otc 201 "external_access --nconn=$__nconn --ipv6=$__ipv6"
 	local out=/tmp/mconnect-$__tag

@@ -43,6 +43,7 @@ cmd_tcase_check_namespaces() {
 cmd_tcase_check_nodes() {
 	test_nodes
 }
+##   tcase_vip_routes [target]
 cmd_tcase_vip_routes() {
 	if test -z "$1"; then
 		tcase "Set VIP routes (ECMP)"
@@ -60,6 +61,13 @@ cmd_tcase_conntrack_size() {
 	test -n "$1" && s=$1
 	tcase "Set conntrack size to $s"
 	echo $s > /proc/sys/net/nf_conntrack_max
+}
+##   tcase_conntrack_clear
+##     Set the conntrack table size. Default 20000
+cmd_tcase_conntrack_clear() {
+	local cnt=$(conntrack -L 2> /dev/null | wc -l)
+	tcase "Clear conntrack ($cnt)"
+	conntrack -F > /dev/null 2>&1
 }
 ##   tcase_add_address_range
 ##     Add address ranges to "lo"
@@ -107,6 +115,7 @@ cmd_tcase_start_server() {
 ##     Access from an external machine with source ranges
 cmd_tcase_external_access() {
 	tcase "Access from an external machine with source ranges"
+	conntrack -F > /dev/null 2>&1
 	local adr="10.0.0.1:5001"
 	local src="20.0.0.0/16"
 	out=/tmp/mconnect
@@ -122,7 +131,7 @@ cmd_tcase_external_access() {
 . /usr/lib/xctest
 indent='  '
 
-
+##
 # Get the command
 cmd=$1
 shift
