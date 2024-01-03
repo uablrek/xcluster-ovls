@@ -492,9 +492,13 @@ cmd_tcase_affinity() {
 	for n in $(seq 1 10); do
 		eval "src=$srccidr"
 		srv1=$(cmd_affinity_mconnect $adr:5001 $src) || tdie
-		srv2=$(affinity_ctraffic $adr:5003 $src) || tdie
-		tlog "Responses from $srv1 and $srv2"
-		test "$srv1" = "$srv2" || tdie "Servers differs $srv1 and $srv2"
+		if test "$PROXY_MODE" = "ipvs"; then
+			srv2=$(affinity_ctraffic $adr:5003 $src) || tdie
+			tlog "Responses from $srv1 and $srv2"
+			test "$srv1" = "$srv2" || tdie "Servers differs $srv1 and $srv2"
+		else
+			tlog "Muli-port test skipped for proxy-mode [$PROXY_MODE]"
+		fi
 	done
 }
 cmd_affinity_mconnect() {

@@ -50,6 +50,10 @@ cmd_env() {
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
+	if echo "$xcluster_PROXY_MODE" | grep -q nftables; then
+		tlog "Set feature-gate [NFTablesProxyMode=true]"
+		export xcluster_FEATURE_GATES=NFTablesProxyMode=true
+	fi
 }
 ##   pack_k8s --dest=<dir> [--newver=master]
 ##     Pack the K8s binaries into an archive (called from ./tar on upgrade)
@@ -196,6 +200,8 @@ test_basic() {
 ##     Test Service session affinity
 test_affinity() {
 	export __nrouters=1
+	test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=ipvs
+	echo $@ | grep -q cilium && export xcluster_PROXY_MODE=disabled
 	tlog "=== k8s-test: Affinity test"
 	test_start $@
 	otc 201 add_srccidr
