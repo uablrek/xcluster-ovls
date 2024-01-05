@@ -24,10 +24,12 @@ spec:
           privileged: true
         env:
         - name: SERVERS
-          value: "mconnect,kahttp"
+          value: "mconnect,kahttp,ctraffic"
         ports:
         - name: mconnect
           containerPort: 5001
+        - name: ctraffic
+          containerPort: 5003
         - name: "kahttp"
           containerPort: 8080
         - name: "kahttps"

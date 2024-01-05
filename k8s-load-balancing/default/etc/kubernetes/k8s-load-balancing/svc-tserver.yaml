@@ -13,6 +13,9 @@ spec:
   - port: 5001
     name: mconnect
     nodePort: 30001
+  - port: 5003
+    name: ctraffic
+    nodePort: 30003
   - port: 8080
     name: kahttp
     nodePort: 30080
