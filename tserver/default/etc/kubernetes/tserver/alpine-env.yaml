@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpine-env
+spec:
+  selector:
+    matchLabels:
+      app: alpine-env
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: alpine-env
+    spec:
+      #enableServiceLinks: false
+      containers:
+      - name: alpine
+        image: alpine:latest
+        imagePullPolicy: IfNotPresent
+        command: ["nc", "-lk", "-p", "7005", "-e", "hostname"]
+        ports:
+        - name: nc
+          containerPort: 7005

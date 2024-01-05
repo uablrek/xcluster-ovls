@@ -74,16 +74,18 @@ cmd_install_servers() {
 		mkdir -p "$dst" || die "Mkdir failed [$dst]"
 	fi
 
-	local d=$GOPATH/src/github.com/Nordix/kahttp
-	test -d $d || die "Not a directory [$d]"
-
 	local p
 	for p in mconnect kahttp; do
 		findf $p.xz
 		xz -dc $f > $dst/$p
 		chmod a+x $dst/$p
 	done
-	cp -r $d/image/etc/cert $dst
+	local d=$GOPATH/src/github.com/Nordix/kahttp
+	if test -d $d; then
+		cp -r $d/image/etc/cert $dst
+	else
+		log "Not a directory [$d], certs not installed"
+	fi
 
 	p=ctraffic
 	findf $p.gz

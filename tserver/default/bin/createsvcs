@@ -1,0 +1,40 @@
+#! /bin/sh
+##
+## namespace=default prefix=test-service selector="app: alpine-env" \
+## createsvcs <number>
+##
+##   Create a number of Kubernetes services for test.
+##
+
+if test -z "$1"; then
+	grep '^##' $0 | cut -c3-
+	exit 0
+fi
+
+test -n "$namespace" || namespace=default
+test -n "$prefix" || prefix=test-service
+test -n "$selector" || selector="app: alpine-env"
+
+# createsvc <name> <selector>
+createsvc() {
+	# cat | kubectl create -f - <<EOF
+	# Some shells (bash) appends the caller's stdin to the command above
+	# for some reason, so the command hangs
+	kubectl create -n $namespace -f - > $tmp <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: $1
+spec:
+  selector:
+    $2
+  ports:
+  - port: 7005
+EOF
+}
+
+cnt=$1
+while test $cnt -gt 0; do
+	createsvc $(printf "$prefix-%04d" $cnt) "$selector"
+	cnt=$((cnt - 1))
+done
