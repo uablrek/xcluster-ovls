@@ -36,6 +36,9 @@ fi
 
 $XCLUSTER install_prog --dest=$tmp host ncat
 
+f=/tmp/$USER/sctpt/sctpt/sctpt
+test -x $f && $XCLUSTER install_prog --dest=$tmp $f 
+
 cd $tmp
 tar cf "$1" *
 cd - > /dev/null

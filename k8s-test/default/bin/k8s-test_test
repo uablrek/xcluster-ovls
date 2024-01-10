@@ -41,127 +41,112 @@ cmd_tcase_check_namespaces() {
 cmd_tcase_check_nodes() {
 	test_nodes
 }
-##   tcase_start_servers - Start servers
-cmd_tcase_start_servers() {
-	tcase "Start servers"
-	apply_k8s $yamld
-
-	if ipv6base; then
-		# Main family; IPv6
-		assign-lb-ip -svc mserver -ip 1000::
-		assign-lb-ip -svc mserver-udp -ip 1000::
-		assign-lb-ip -svc kahttp -ip 1000::80
+##   tcase_vip_routes [via]
+##     Set VIP routes. Use ECMP if "via" is unspecified
+cmd_tcase_vip_routes() {
+	if test -n "$1"; then
+		tcase "Set VIP route via $1"
+        ip ro replace 10.0.0.0/24 via $1 || tdie Ipv4
+        ip -6 ro replace $PREFIX:10.0.0.0/120 via $PREFIX:$1 || tdie Ipv6
 	else
-		# Main family; IPv4
-		assign-lb-ip -svc mserver -ip 10.0.0.0
-		assign-lb-ip -svc mserver-udp -ip 10.0.0.0
-		assign-lb-ip -svc kahttp -ip 10.0.0.80
+		tcase "Set VIP route via ECMP"
+		if test "$TOPOLOGY" = "backend"; then
+			tlog "Using TOPOLOGY=backend"
+			vip_route 3
+			sed -i -e 's,192.168.1.1,192.168.3.1,' $KUBECONFIG
+		else
+			vip_route
+		fi
 	fi
-
-	assign-lb-ip -svc mserver-preferdual-lb -ip 10.0.0.2,1000::2
-	assign-lb-ip -svc kahttp-preferdual-lb -ip 10.0.0.81,1000::81
-	assign-lb-ip -svc kahttp-ipv4-lb -ip 10.0.0.82
-	assign-lb-ip -svc kahttp-ipv6-lb -ip 1000::82
-	assign-lb-ip -svc mserver-affinity -ip 10.0.0.60,1000::60
-	assign-lb-ip -svc mserver-ipv6-lb -ip 1000::1
-	assign-lb-ip -svc mserver-ipv4-lb -ip 10.0.0.1
-	assign-lb-ip -svc mserver-dual-srange -ip 10.0.0.8,1000::8
-
-	test_daemonset mserver 180
-	test_daemonset mserver-hostnet 180
-	test_deployment mserver-deployment 180
-	test_daemonset kahttp 180
 }
-cmd_tcase_start_sctp() {
-	tcase "Start SCTP"
-	kubectl label nodes --all app=mserver-sctp || tdie
-	kubectl label nodes vm-002 app- || tdie
-	kubectl apply -f /etc/kubernetes/k8s-test/sctp || tdie
-	assign-lb-ip -svc mserver-sctp -ip 10.0.0.77,1000::77 || tdie
-	assign-lb-ip -svc mserver-sctp-udp -ip 10.0.0.78,1000::78 || tdie
-	assign-lb-ip -svc mserver-sctp-tcp -ip 10.0.0.79,1000::79 || tdie
-	test_daemonset mserver-sctp 180
+##   tcase_wait
+##     Wait for serviceaccount "default" to appear
+cmd_tcase_wait() {
+	tcase 'Wait for serviceaccount "default" to appear'
+	pushv 60 60 1
+	tex kubectl get serviceaccount default 2>&1
 }
-cmd_tcase_set_route() {
-	tcase "Set route $1 via $2"
-	test -n "$2" || tdie "Parameter missing"
-	if echo "$1" | grep -q :; then
-		ip -6 route replace $1 via $2 || tdie
-	else
-		ip route replace $1 via $2 || tdie
-	fi
-	return 0
-}
+##   tcase_mconnect [--pod=selector] [--udp] <address> [nconn] [targets] [margin]
+##     Connectivity test with mconnect
 cmd_tcase_mconnect() {
-	local pod=$2
-	test -z "$2" && pod="main netns"
-	tcase "Mconnect to [$1] from [$pod]"
+	test "$__udp" = "yes" && mcopts=-udp
+	tcase "Mconnect to $1 $__pod $mcopts"
 	test -n "$1" || tdie "No dest"
-
+	adr=$1  # (used in mconnect_from_pod())
+	shift
+	# Add brackets to ipv6 addresses if needed
+	if echo $adr | grep -q :; then
+		echo $adr | grep -qF '[' || adr="[$adr]"
+	fi
 	pushv 60 10 2
-	if test "$pod" = "main netns"; then
-		tex "do_mconnect $1:5001 100"
+	if test -z "$__pod"; then
+		tex "do_mconnect $adr $@"
 		return
 	fi
 
-	pod=$(get_pod $pod)
+	pod=$(get_pod $__pod)  # (used in mconnect_from_pod())
 	tlog "From POD $pod"
 	echo "$pod" | grep -q null && tdie "Pod not found"
-	$kubectl exec $pod -- nslookup $1 || tdie "nslookup $1"
-	tex "mconnect_from_pod $pod $1"
+	tex "mconnect_from_pod $@"
 }
 mconnect_from_pod() {
-	local pod=$1
-	local adr=$2
-	$kubectl exec $pod -- mconnect -address $adr:5001 -nconn 100 -output json > \
-		/tmp/mconnect.out || return
-	check_mconnect_result /tmp/mconnect.out
+	mkdir -p $tmp
+	local out=$tmp/out
+	local nconn=100
+	if test -n "$1"; then
+		nconn=$1
+		shift
+	fi
+	if echo $adr | grep -qF ']' ; then
+		echo $adr | grep -qF ']:' || adr=$adr:5001
+	else
+		echo $adr | grep -qF ':' || adr=$adr:5001
+	fi
+	if ! $kubectl exec $pod -- \
+		mconnect -address $adr -nconn $nconn -output json $mcopts > $out; then
+		cat $out | jq .
+		return 1
+	fi
+	check_mconnect_result $out $nconn $@
 }
-
+##   tcase_podip
+##     Check that the "podIP" is of the main family
 cmd_tcase_podip() {
 	tcase "Check podIP"
 	local main_family=IPv4
 	ipv6base && main_family=IPv6
-	local podIP=$(kubectl get pod -l app=mserver -o json | jq -r .items[0].status.podIP)
+	local podIP=$(kubectl get pod -l app=tserver -o json | jq -r .items[0].status.podIP)
 	tlog "podIP; $podIP"
 	test "$(family $podIP)" = "$main_family" || tdie "podIP not of main family"
 }
-
-cmd_tcase_dual_services() {
-	local main_family=IPv4
-	ipv6base && main_family=IPv6
-	tcase "Check addresses of services. Main family; $main_family"
-	local result=OK
-	check_family kubernetes $main_family || result=kubernetes
-	check_family mserver-deployment $main_family || result=mserver-deployment
-	check_family mserver-ipv4 IPv4 || result=mserver-ipv4
-	check_family mserver-ipv6 IPv6 || result=mserver-ipv6
-
-	check_family_dual mserver-preferdual || result=mserver-preferdual
-	check_family_dual mserver-preferdual-lb || result=mserver-preferdual-lb
-	
-	test "$result" = "OK" || tdie $result
+family() {
+	if echo $1 | grep -q :; then
+		echo IPv6
+	else
+		echo IPv4
+	fi
 }
-
+##   nslookup <DN>
+##     Lookup a domain name
+cmd_tcase_nslookup() {
+	tcase "nslookup $1"
+	test -n "$1" || tdie "No DN"
+	nslookup $1 2>&1 | grep -qE "Name:.+$1"
+}
+##   tcase_headless_services
+##     Check addresses of headless services
 cmd_tcase_headless_services() {
 	local main_family=IPv4
 	ipv6base && main_family=IPv6
-	tcase "Check addresses of headless services. Main family; $main_family"
-	if test $(k8s_ver) -lt 1019000; then
-		tlog "SKIPPED; Headless tests for k8s < v1.19 (endpointslices in alpha)"
-		return 0
-	fi
+	tcase "Check addresses of headless services"
 	local result=OK
-	check_headless mserver-headless $main_family || result=mserver-headless
-	check_headless mserver-headless-ipv4 IPv4 || result=mserver-headless-ipv4
-	check_headless mserver-headless-ipv6 IPv6 || result=mserver-headless-ipv6
+	check_headless headless dual || result=headless
+	check_headless headless-ipv4 IPv4 || result=headless-ipv4
+	check_headless headless-ipv6 IPv6 || result=headless-ipv6
 
-	# Hostnet <v1.20 work porly since nodes can only have one address.
-
-	check_family_dual hostnet-dual || result=hostnet-dual
-	check_headless hostnet-headless-ipv4 IPv4 || result=hostnet-headless-ipv4
-	check_headless hostnet-headless-ipv6 IPv6 || result=hostnet-headless-ipv6
-	check_headless hostnet-headless-dual dual || result=hostnet-headless-dual
+	check_headless headless-hostnet dual || result=headless-hostnet
+	check_headless headless-hostnet-ipv4 IPv4 || result=headless-hostnet-ipv4
+	check_headless headless-hostnet-ipv6 IPv6 || result=headless-hostnet-ipv6
 
 	test "$result" = "OK" || tdie $result
 }
@@ -181,83 +166,41 @@ check_headless() {
 		dual) test $nipv4 -gt 0 -a $nipv6 -gt 0;;
 	esac
 }
+##   tcase_outgoing_http
+##     Test http from a POD to vm-201
+cmd_tcase_outgoing_http() {
+	local pod=$(get_pod app=tserver)
+	tcase "Http from pod [$pod] to vm-201"
+	test -n "$pod" || tdie "Can't find POD"
+	kubectl exec $pod -- curl -s http://[$PREFIX:192.168.1.201]/cgi-bin/info \
+		| grep -q vm-201 || tdie IPv6
+	kubectl exec $pod -- curl -s http://192.168.1.201/cgi-bin/info \
+		| grep -q vm-201 || tdie IPv4
+}
+##   tcase_sctp [--pod=selector] <adr>
+##     Test SCTP (port 6000)
+cmd_tcase_sctp() {
+	tcase "SCTP to [$1] $__pod"
+	test -n "$1" || tdie "Parameter missing"
+	if test -n "$__pod"; then
+		local pod=$(get_pod $__pod)
+		test -n "$pod" || tdie "Can't find POD"
+		echo | $kubectl exec -it $pod -- \
+			ncat --sctp -v -w 2 $1 6000 2>&1 | grep -F 'Connected to' \
+			|| tdie "POD to $1"
+		return 0
+	fi
+	echo | ncat --sctp -v -w 2 $1 6000 2>&1 | grep -F 'Connected to' \
+		|| tdie IPv4
+	echo | ncat --sctp -v -w 2 $PREFIX:$1 6000 2>&1 | grep -F 'Connected to' \
+		|| tdie IPv6
+}
 
 # Prints all endpointslice addresses for a service
 endpointslice_addresses() {
 	$kubectl get endpointslices -l kubernetes.io/service-name=$1 -o json \
 		| jq -r '.items[].endpoints[].addresses[0]'
 }
-
-get_clusterip() {
-	$kubectl get svc $1 -o json | jq -r .spec.clusterIP
-}
-family() {
-	if echo "$1" | grep -q : ; then
-		echo IPv6
-	else
-		echo IPv4
-	fi
-}
-check_family() {
-	local a=$(get_clusterip $1)
-	tlog "Service $1 clusterIP=$a"
-	test "$a" = "None" && tdie "check_family for headless service [$1]"
-	test "$(family $a)" = "$2" && return 0
-	tlog "Wrong family; $1 clusterIP=$a"
-	return 1
-}
-
-check_family_dual() {
-	tlog "Dual-stack service $1"
-	local a=$(get_clusterip $1)
-	local families=":"
-	for a in $($kubectl get svc -o json $1 | jq -r .spec.clusterIPs[]); do
-		families="$families$(family $a):"
-		#tlog "  Found clusterIP $a"
-	done
-	#tlog "  Families $families"
-	if ! echo $families | grep -q ":IPv4:"; then
-		tlog "IPv4 address is missing"
-		return 1
-	fi
-	if ! echo $families | grep -q ":IPv6:"; then
-		tlog "IPv6 address is missing"
-		return 1
-	fi
-
-	if ! ensure_coredns_ver 1008001; then
-		tlog "SKIPPED; DNS query tests"
-		return 0
-	fi
-
-	return 0
-}
-
-# Convert a version; v1.2.3 to a number like 1002003
-cversion() {
-	local v=$(echo $1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-	test -n "$v" || v="$(echo $1 | grep -oE '[0-9]+\.[0-9]+').0"
-	local v1=$(echo $v | cut -d. -f1)
-	local v2=$(echo $v | cut -d. -f2)
-	local v3=$(echo $v | cut -d. -f3)
-	printf "%d%03d%03d\n" $v1 $v2 $v3
-}
-k8s_ver() {
-	if kubectl version --short > /dev/null 2>&1; then
-		cversion "$(kubectl version --short | grep Server)"
-	else
-		cversion "$(kubectl version | grep Server)"
-	fi
-}
-ensure_coredns_ver() {
-	local corednsver=$(coredns -version | grep CoreDNS)
-	if test $(cversion $corednsver) -lt $1; then
-		tlog "WARNING; Dual-stack unsupported in $corednsver"
-		return 1
-	fi
-	return 0
-}
-
 k8s_unpack() {
 	local f=/root/newk8s.tar
 	test -r $f || tdie "Not readable [$f]"
@@ -318,54 +261,15 @@ cmd_tcase_kill_pod() {
 	tcase "Kill [$pod]"
 	$kubectl delete $pod --grace-period=0 || tdie "$kubectl delete"
 }
-cmd_tcase_vip_routes() {
-	tcase "Setup VIP routes (ECMP)"
-	if test "$TOPOLOGY" = "backend"; then
-		tlog "Using TOPOLOGY=backend"
-		vip_route 3
-		sed -i -e 's,192.168.1.1,192.168.3.1,' $KUBECONFIG
-	else
-		vip_route
-	fi
-}
-
-cmd_tcase_external_traffic() {
-	tcase "External traffic"
-	if ipv6base; then
-		external_traffic [1000::]:5001
-	else
-		external_traffic 10.0.0.0:5001
-	fi
-
-	external_traffic 10.0.0.1:5001
-	external_traffic [1000::1]:5001
-	external_traffic 10.0.0.2:5001
-	external_traffic [1000::2]:5001
-}
-##   source_ranges_start - Setup service with loadBalancerSourceRanges
-cmd_tcase_source_ranges_start() {
-	tcase "Setup service with loadBalancerSourceRanges"
-	$kubectl apply -f /etc/kubernetes/k8s-test/mserver-deployment.yaml \
-		|| tdie
-	$kubectl apply -f /etc/kubernetes/k8s-test/dual/mserver-svc-srange.yaml \
-		|| tdie
-	assign-lb-ip -svc mserver-dual-srange -ip 10.0.0.8,1000::8
-	test_deployment mserver-deployment 180
-}
-##   source_ranges_access - Access to a service with loadBalancerSourceRanges
-cmd_tcase_source_ranges_access() {
-	tcase "Access to a service with loadBalancerSourceRanges"
-	external_traffic 10.0.0.8:5001
-	external_traffic [1000::8]:5001
-}
-##   neg_source_ranges_access - Negative test with loadBalancerSourceRanges
+##   neg_source_ranges_access <adr>
+##     Negative test with loadBalancerSourceRanges
 cmd_tcase_neg_source_ranges_access() {
-	tcase "Negative test with loadBalancerSourceRanges"
-	mconnect -address 10.0.0.8:5001 -srccidr 10.200.200.1/32 && \
-		tdie "Access outside loadBalancerSourceRanges works!"
+	tcase "Negative test with loadBalancerSourceRanges ($1)"
+	test -n "$1" || tdie "Parameter missing"
+	mconnect -address $1:5001 -srccidr 10.200.200.1/32 && tdie IPv4
+	mconnect -address [$PREFIX:$1]:5001 -srccidr 10.200.200.1/32 && tdie IPv6
 	return 0
 }
-
 external_traffic() {
 	tlog "Traffic to; $1"
 	tex do_mconnect $1 || tdie "mconnect to; $1"
@@ -451,13 +355,12 @@ cmd_tcase_kube_proxy_restart() {
 
 cmd_tcase_add_srccidr() {
 	tcase "Add ($PREFIX:)10.200.200.0/24 to dev lo"
-	ip addr add 10.200.200.0/24 dev lo || tdie
-	ip -6 addr add $PREFIX:10.200.200.0/120 dev lo || tdie
-	ip -6 ro add local $PREFIX:10.200.200.0/120 dev lo
+	ip addr replace 10.200.200.0/24 dev lo || tdie
+	ip -6 addr replace $PREFIX:10.200.200.0/120 dev lo || tdie
+	ip -6 ro replace local $PREFIX:10.200.200.0/120 dev lo
 	sysctl -w net.ipv4.ip_nonlocal_bind=1
 	sysctl -w net.ipv6.ip_nonlocal_bind=1
 	if test "$__ecmp" != "yes"; then
-		tlog "Disable ECMP"
 		ip ro replace 10.0.0.0/24 via 192.168.1.2
 		ip -6 ro replace 1000::/120 via $PREFIX:192.168.1.2
 	fi
@@ -473,34 +376,42 @@ cmd_tcase_add_srccidr() {
 		i=$((i + 1))
 	done
 }
-
+##   tcase_affinity [--multiport] <adr>
+##     Test session affinity. With --multiport test is made that ports
+##     in a multiport service has affinity (only works with ipvs)
 cmd_tcase_affinity() {
 	local adr=10.0.0.60 srccidr
 	test -n "$1" && adr=$1
 	tcase "Test Service session affinity; $adr"
-	if test "$__nrouters" != "1"; then
-		tlog "SKIPPED: nrouters=$__nrouters"
-		return 0
-	fi
+
+	# Verify that we have distribution with different sources
+	# Also wait until the service become available
 	if echo $adr | grep -q :; then
 		adr="[$adr]"
-		srccidr='$PREFIX:10.200.200.$n/128'
+		mcopts="-srccidr $PREFIX:10.200.200.0/120"
 	else
-		srccidr='10.200.200.$n/32'
+		mcopts="-srccidr 10.200.200.0/24"
+	fi
+	tex do_mconnect $adr
+	unset mcopts
+
+	if echo $adr | grep -q :; then
+		srccidr="$PREFIX:10.200.200.10/128"
+	else
+		srccidr='10.200.200.10/32'
 	fi
 	local n src srv1 srv2
 	for n in $(seq 1 10); do
 		eval "src=$srccidr"
 		srv1=$(cmd_affinity_mconnect $adr:5001 $src) || tdie
-		if test "$PROXY_MODE" = "ipvs"; then
+		if test "$__multiport" = "yes"; then
 			srv2=$(affinity_ctraffic $adr:5003 $src) || tdie
 			tlog "Responses from $srv1 and $srv2"
 			test "$srv1" = "$srv2" || tdie "Servers differs $srv1 and $srv2"
-		else
-			tlog "Muli-port test skipped for proxy-mode [$PROXY_MODE]"
 		fi
 	done
 }
+# Make 100 connects and verify that they all end up in the same server
 cmd_affinity_mconnect() {
 	local adr=$1
 	local srccidr=$2
@@ -526,20 +437,16 @@ affinity_ctraffic() {
 	cut -d: -f1 < $out
 }
 
-##   tcase_scale <n> - Scale mserver-deployment
+##   tcase_scale <deployment> <n>
+##     Scale out/in the tserver deployment
 cmd_tcase_scale() {
-	tcase "Scale mserver-deployment to [$1]"
-	test -n "$1" || tdie "No scaling factor"
-	$kubectl scale deployment --replicas=$1 mserver-deployment || tdie scale
-	test_deployment mserver-deployment 30
+	tcase "Scale [$1] to [$2]"
+	test -n "$2" || tdie "Parameter missing"
+	$kubectl scale deployment --replicas=$2 $1 || tdie scale
+	test_deployment $1 30
 }
-##   tcase_start_alpine_test - Start the alpine-test image
-cmd_tcase_start_alpine_test() {
-	tcase "Start the alpine-test image"
-	$kubectl apply -f /etc/kubernetes/k8s-test/alpine-test.yaml || tdie
-	test_daemonset alpine-test 30
-}
-##   tcase_check_setcap - Test get/setcap in a container
+##   tcase_check_setcap
+##     Test get/setcap in a container
 cmd_tcase_check_setcap() {
 	local pod=$(get_pod app=alpine-test)
 	tcase "Test get/setcap in [$pod]"
@@ -550,31 +457,21 @@ cmd_tcase_check_setcap() {
 }
 ##   tcase_negative_access <adr> - Check that telnet to the address NOT work
 cmd_tcase_negative_access() {
-	tcase "Test that access NOT works to [$1]"
+	tcase "Test ssh access NOT works to [$1]"
 	test -n "$1" || tdie "Parameter Missing"
 	echo "" | nc -w1 $1 22 > /dev/null && tdie "Access works to [$1]"
 	return 0
 }
-##   tcase_mount_hugep - Mount the hugepages fs
+##   tcase_mount_hugep
+##     Mount the hugepages fs
 cmd_tcase_mount_hugep() {
 	tcase "Mount the hugepages fs"
 	local d=/dev/hugepages
 	mkdir -p $d
     mount -t hugetlbfs nodev $d || tdie
 }
-##   tcase_start_hugep - Create PODs that mounts hugepages
-cmd_tcase_start_hugep() {
-	tcase "Create PODs that mounts hugepages"
-	$kubectl apply -f /etc/kubernetes/k8s-test/alpine-hugep.yaml || tdie
-	test_daemonset alpine-hugep 60
-}
-##   mserver_udp - Start mserver and udp-svc-mserver
-cmd_tcase_mserver_udp() {
-	tcase "Start mserver and udp-svc-mserver"
-	$kubectl apply -f /etc/kubernetes/k8s-test/svc-udp/mserver-svc-udp.yaml || tdie
-	test_deployment udp-mserver 60
-}
-##   ctraffic_udp - Ctraffic over UDP
+##   ctraffic_udp
+##     Ctraffic over UDP
 cmd_tcase_ctraffic_udp() {
 	tcase "Ctraffic over UDP"
 	local nodeport=$($kubectl get svc udp-svc-mserver -o json | jq '.spec.ports[]|select(.name == "ctraffic").nodePort')
@@ -585,40 +482,55 @@ cmd_tcase_ctraffic_udp() {
 	fi
 	ctraffic -analyze hosts -stat_file /tmp/out 1>&2
 }
-##   test tcase_mserver2 [replicas]
-##     mserver deployment and a svc, and NOTHING ELSE
-cmd_tcase_mserver2() {
-	local replicas=8
-	if test -n "$1"; then
-		replicas=$1
-		sed -i -e "s,replicas: 8,replicas: $replicas," $yamld/mserver2.yaml
-	fi
-	tcase "Start mserver2 deployment and svc ($replicas)"
-	$kubectl create -f $yamld/mserver2.yaml || tdie create
-	assign-lb-ip -svc mserver2 -ip 10.0.0.10,$PREFIX:10.0.0.10
-	test_deployment mserver2 180
-}
-##   tcase_nf_conntrack_tcp_be_liberal - set the sysctl
-cmd_tcase_nf_conntrack_tcp_be_liberal() {
-	tcase "nf_conntrack_tcp_be_liberal=1"
-	sysctl -w net.netfilter.nf_conntrack_tcp_be_liberal=1
-}
-##   tcase_xmconnect [address] [nconn] [targets] [margin]
-##     External mconnect. "expected-conns" is expected conns per POD
-cmd_tcase_xmconnect() {
-	tcase "Mconnect $@"
-	pushv 60 10 2
-	tex "do_mconnect $@"
-}
+##   tcase_conntrack_size [size]
+##     Set the conntrack size
 cmd_tcase_conntrack_size() {
 	local s=20000
 	test -n "$1" && s=$1
 	tcase "Set conntrack size to $s"
 	echo $s > /proc/sys/net/nf_conntrack_max
 }
+##   tcase_svc <svc> [vip]
+##     Create a service and set the loadBalancerIP's (optional)
+cmd_tcase_svc() {
+	tcase "Create service [$1] ($2)"
+	test -n "$1" || tdie "No service"
+	local svc=$1
+	local f=$yamld/svc-$svc.yaml
+	test -r $f || f=$yamld/$svc.yaml
+	test -r $f || tdie "Can't find manifest"
+	$kubectl apply -f $f || tdie "kubectl apply"
+	if test -n "$2"; then
+		assign-lb-ip -svc $svc -ip $2,$PREFIX:$2 || tdie assign-lb-ip
+	fi
+}
+##   tcase_deployment [--replicas=] <deployment>
+##     Start a deployment
+cmd_tcase_deployment() {
+	tcase "Start deployment [$1] ($__replicas)"
+	test -n "$1" || tdie "No deployment"
+	local f=$yamld/$1.yaml
+	test -r $f || tdie "Can't find manifest"
+	test -n "$__replicas" && \
+		sed -i -E "s,replicas: [0-9]+,replicas: $__replicas," $f
+	$kubectl apply -f $f || tdie "kubectl apply"
+	test_deployment $1 120
+}
+##   tcase_daemonset <daemonset>
+##     Start a daemonset
+cmd_tcase_daemonset() {
+	tcase "Start daemonset [$1]"
+	test -n "$1" || tdie "No daemonset"
+	local f=$yamld/$1.yaml
+	test -r $f || tdie "Can't find manifest"
+	$kubectl apply -f $f || tdie "kubectl apply"
+	test_daemonset $1 120
+}
+
+
 
 . /etc/profile
-test -n "$PREFIX" || PREFIX=1000::1
+test -n "$PREFIX" || PREFIX=fd00:
 . /usr/lib/xctest
 indent='  '
 

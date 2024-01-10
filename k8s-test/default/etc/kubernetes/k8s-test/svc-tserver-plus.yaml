@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tserver-plus
+spec:
+  type: LoadBalancer
+  ipFamilyPolicy: RequireDualStack
+  selector:
+    app: tserver
+  ports:
+  - port: 5001
+    name: mconnect
+  - port: 5003
+    name: ctraffic
+  - port: 5001
+    name: mconnect-udp
+    protocol: UDP
+  - port: 5003
+    name: ctraffic-udp
+    protocol: UDP
+  - port: 80
+    name: http
+    targetPort: 8080
+  - port: 443
+    name: https
+    targetPort: 8443
+  - port: 6000
+    name: sctpt
+    protocol: SCTP
+
+

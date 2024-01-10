@@ -36,17 +36,21 @@ dbg() {
 ##   env
 ##     Print environment.
 cmd_env() {
-	test -n "$__newver" || __newver=master
+	test -n "$PREFIX" || PREFIX=fd00:
+	test -n "$__nvm" || __nvm=4
+	test -n "$__nrouters" || __nrouters=1
 	test -n "$__registry" || __registry=docker.io/uablrek
+	test -n "$__replicas" || __replicas=4
 	test -n "$KUBERNETESD" || KUBERNETESD=$HOME/tmp/kubernetes
 	if test "$cmd" = "env"; then
-		local opt="newver|registry"
+		local opt="registry|nvm|nrouters|replicas"
 		set | grep -E "^(__($opt)|KUBERNETESD)="
 		return 0
 	fi
 
 	images=$($XCLUSTER ovld images)/images.sh
-	test -n "$xcluster_DOMAIN" || xcluster_DOMAIN=xcluster
+	test -n "$xcluster_DOMAIN" || export xcluster_DOMAIN=xcluster
+	test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=ipvs
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
@@ -54,6 +58,7 @@ cmd_env() {
 		tlog "Set feature-gate [NFTablesProxyMode=true]"
 		export xcluster_FEATURE_GATES=NFTablesProxyMode=true
 	fi
+	export xcluster_PREFIX=$PREFIX
 }
 ##   pack_k8s --dest=<dir> [--newver=master]
 ##     Pack the K8s binaries into an archive (called from ./tar on upgrade)
@@ -74,16 +79,6 @@ cmd_pack_k8s() {
 	mkdir -p $__dest
 	tar -C $tmp -cf $__dest/newk8s.tar bin
 }
-##   inject
-##     Inject ovl/k8s-test to VMs
-cmd_inject() {
-	local n
-	test -n "$__nvm" || __nvm=4
-	for n in $(seq 1 $__nvm) 201 202; do
-		echo "Inject test k8s-test to 192.168.0.$n"
-		$XCLUSTER inject --addr=root@192.168.0.$n k8s-test || die
-	done
-}
 ##   build_alpine_test
 ##     Build the "alpine-test" image and upload to local-reg
 cmd_build_alpine_test() {
@@ -94,119 +89,191 @@ cmd_build_alpine_test() {
 	docker build -t $tag -f $dockerfile $tmp || die "docker build $base"
 	$images lreg_upload $tag
 }
-
+##   build_sctpt
+##     Build the "sctpt" utility
+cmd_build_sctpt() {
+	cmd_env
+	local d=$($XCLUSTER ovld sctp)
+	make -j$(nproc) -C $d/src || die make
+}
 ##
 ##   test [--xterm] [--no-stop] [test x-ovls...] > logfile
 ##     Exec tests
 cmd_test() {
-	if test "$__list" = "yes"; then
-        grep '^test_' $me | cut -d'(' -f1 | sed -e 's,test_,,'
-        return 0
-    fi
-
 	cmd_env
 	cd $dir
-    start=starts
-    test "$__xterm" = "yes" && start=start
-    rm -f $XCLUSTER_TMP/cdrom.iso
+	start=starts
+	test "$__xterm" = "yes" && start=start
+	rm -f $XCLUSTER_TMP/cdrom.iso
 
-    if test -n "$1"; then
+	if test -n "$1"; then
 		local t=$1
 		shift
 		test_$t $@
-    else
-		test_basic
-    fi      
+	else
+		test_default
+	fi		
 
-    now=$(date +%s)
-    tlog "Xcluster test ended. Total time $((now-begin)) sec"
-
+	now=$(date +%s)
+	tlog "Xcluster test ended. Total time $((now-begin)) sec"
 }
 
-##   test start_empty
+##   test [--hugep] [--wait] start_empty
 ##     Start cluster without servers
 test_start_empty() {
+	test "$__no_start" = "yes" && return 0
 	if test -n "$TOPOLOGY"; then
 		tlog "WARNING: network-topology [$TOPOLOGY]"
 		export xcluster_TOPOLOGY=$TOPOLOGY
 		. $($XCLUSTER ovld network-topology)/$TOPOLOGY/Envsettings
 	fi
-	xcluster_start network-topology . $@
+	if test "$__hugep" = "yes"; then
+		local n
+		for n in $(seq $FIRST_WORKER $__nvm); do
+			eval export __append$n="hugepages=128"
+		done
+	fi
+	local cni
+	if test -n "$__cni"; then
+		# CI in Jenkins requires a --cni parameter
+		echo $@ | grep -q "k8s-cni-$__cni" || cni=k8s-cni-$__cni
+	fi
+	if echo $@ $cni | grep -q cilium; then
+		__cni=cilium
+		export __mem=$((__mem + 1024))
+		export __mem1=$((__mem1 + 1024))
+		export xcluster_PROXY_MODE=disabled
+	fi
+	xcluster_start network-topology . $cni $@
+	test "$__hugep" = "yes" && otcwp mount_hugep
 	otc 1 check_namespaces
 	otc 1 check_nodes
-	otcr vip_routes
+	test "$__wait" = "yes" && otc 1 wait
 }
-##   test start
-##     Start cluster and servers
+##   test [--multus] start
+##     Start cluster and tserver deployment
 test_start() {
+	test "$__no_start" = "yes" && return 0
 	test_start_empty $@
 	if test "$__multus" = "yes"; then
 		tcase "Installing Multus"
 		kubectl apply -f $($XCLUSTER ovld multus)/multus-install.yaml
 	fi
-	otc 1 start_servers
+	otc 1 "svc tserver 10.0.0.0"
+	otc 1 "deployment --replicas=$__replicas tserver"
 }
-##   test start_sctp
-##     Start cluster and SCTP server
-test_start_sctp() {
-	test_start_empty $@
-	otcr "set_route 10.0.0.0/24 192.168.1.2"
-	otcr "set_route 1000::/120 1000::1:192.168.1.2"
-	otc 1 start_sctp
-}
-##   test start_hugep
-##     Start cluster with huge-pages
-test_start_hugep() {
-	local n
-	for n in $(seq $FIRST_WORKER $__nvm); do
-		eval export __append$n="hugepages=128"
-	done
-	test_start_empty $@
-}
-##   test start_mserver2
-##     Setup a mserver deployment and a svc, and NOTHING ELSE.
-test_start_mserver2() {
-	test -n "$__nrouters" || export __nrouters=1
-	export xcluster_PREFIX=$PREFIX
-	test_start_empty $@
-	otc 1 mserver2
-}
-##   test basic (default)
-##     Basic K8s tests
-test_basic() {
+##   test default
+##     The default test suite
+test_default() {
+	__replicas=4
+	__nvm=4
+	__nrouters=1
+	__hugep=yes
+	__wait=yes
 	test_start $@
+	__no_start=yes
+	__no_stop=yes
+	
+	test_basic
+	test_mconnect
+	test_connectivity
+	#test "$xcluster_PROXY_MODE" = "ipvs" && __multiport=yes # flakey!
+	test_affinity
 
-	echo "$xcluster_IPV6_PREFIX" | grep -q : && tlog "Main-family IPv6"
-	otc 1 podip
-	otc 1 dual_services
-	otc 1 headless_services
-
-	otc 1 "scale 8"
-	otc 1 "scale 4"
-
-	otc 2 "mconnect mserver.default.svc.$xcluster_DOMAIN"
-	otc 2 "mconnect mserver app=mserver"
-	otc 2 "mconnect mserver app=mserver-hostnet"
-	otc 2 "mconnect mserver-hostnet.default.svc.$xcluster_DOMAIN"
-	otc 2 "mconnect mserver-hostnet app=mserver"
-	otc 2 "mconnect mserver-hostnet app=mserver-hostnet"
-
-	otc 201 external_traffic
-	otc 201 external_http
-
+	unset __no_stop
 	xcluster_stop
 }
-##   test affinity
+##   test basic
+##     Basic K8s tests
+test_basic() {
+	__hugep=yes
+	test_start $@
+	otc 1 "nslookup www.google.se"
+	otc 1 "nslookup tserver.default.svc.$xcluster_DOMAIN"
+	otc 1 "svc headless"
+	otc 1 "svc headless-hostnet"
+	otc 1 "daemonset tserver-daemonset"
+	otc 1 "daemonset tserver-hostnet"
+	otc 1 "daemonset alpine-hugep"
+	otc 1 podip
+	otc 1 headless_services
+	xcluster_stop
+}
+##   test scale
+##     Scale a daemonset
+test_scale() {
+	test_start $@
+	otc 1 "scale tserver $((__replicas + 4))"
+	otc 1 "scale tserver $__replicas"
+	xcluster_stop
+}
+##   test [--no-ecmp] [--margin=] mconnect
+##     Simple external mconnect. --narrow routes to vm-002 only
+test_mconnect() {
+	test_start $@
+	if test "$__no_ecmp" = "yes"; then
+		otcr "vip_routes 192.168.1.2"
+	else
+		otcr "vip_routes"
+	fi
+	local nconn=$((__replicas * 25))
+	otc 201 "mconnect 10.0.0.0 $nconn $__replicas"
+	otc 201 "mconnect $PREFIX:10.0.0.0 $nconn $__replicas"
+	xcluster_stop
+}
+##   test connectivity
+##     Connectivity test
+test_connectivity() {
+	test_start $@
+	otc 1 "svc lbrange 10.0.0.1"
+	otc 1 "svc tserver-plus 10.0.0.3"
+	otc 1 "svc hostnet"
+	otc 1 "daemonset tserver-hostnet"
+	otcr vip_routes
+	local nconn=$((__replicas * 25))
+	# Use DN from main netns and from PODs
+	otc 2 "mconnect tserver.default.svc.$xcluster_DOMAIN $nconn $__replicas"
+	otc 2 "mconnect --pod=app=tserver tserver $nconn $__replicas"
+	otc 2 "mconnect --pod=app=tserver-hostnet tserver $nconn $__replicas"
+	otc 2 "mconnect hostnet.default.svc.$xcluster_DOMAIN"
+	otc 2 "mconnect --pod=app=tserver hostnet $nconn $__replicas"
+	otc 2 "mconnect --pod=app=tserver-hostnet hostnet $nconn $__replicas"
+	# Use LBIP from within a POD
+	otc 2 "mconnect --pod=app=tserver 10.0.0.0 $nconn $__replicas"
+	otc 2 "mconnect --pod=app=tserver $PREFIX:10.0.0.0 $nconn $__replicas"
+	# Security
+	otc 201 "negative_access 10.0.0.0"
+	otc 201 "negative_access $PREFIX:10.0.0.0"
+	# loadBalancerSourceRanges
+	otc 201 "mconnect 10.0.0.1 $nconn $__replicas"
+	otc 201 "mconnect $PREFIX:10.0.0.1 $nconn $__replicas"
+	otc 201 "neg_source_ranges_access 10.0.0.1"
+	# UDP
+	otc 201 "mconnect --udp 10.0.0.3 $nconn $__replicas"
+	otc 201 "mconnect --udp $PREFIX:10.0.0.3 $nconn $__replicas"
+	otc 2 "mconnect --udp --pod=app=tserver tserver-plus $nconn $__replicas"
+	# SCTP
+	if test "$__cni" != "cilium"; then
+		otc 201 "sctp 10.0.0.3"
+		otc 2 "sctp --pod=app=tserver tserver-plus"
+	else
+		tlog "WARNING: SCTP test sipped for cni=cilium"
+	fi
+	# Outgoing connect. Will test both IPv4 and IPv6
+	otc 1 outgoing_http
+	xcluster_stop
+}
+##   test [--multiport] affinity
 ##     Test Service session affinity
 test_affinity() {
-	export __nrouters=1
-	test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=ipvs
-	echo $@ | grep -q cilium && export xcluster_PROXY_MODE=disabled
-	tlog "=== k8s-test: Affinity test"
-	test_start $@
+	__nrouters=1
+	test_start_empty $@
+	otc 201 "vip_routes 192.168.1.2"
 	otc 201 add_srccidr
-	otc 201 "affinity 10.0.0.60"
-	otc 201 "affinity 1000::60"
+	otc 1 "svc tserver-affinity 10.0.0.33"
+	otc 1 "deployment --replicas=$__replicas tserver"
+	otc 201 "affinity --multiport=$__multiport 10.0.0.33"
+	otc 201 "affinity --multiport=$__multiport $PREFIX:10.0.0.33"
 	xcluster_stop
 }
 ##   test [--newver=] upgrade
@@ -215,7 +282,7 @@ test_upgrade() {
 	test -n "$__newver" || __newver=master
 	export __newver
 	tlog "=== k8s-test: Upgrade to $__newver"
-	test_start_empty
+	test_start_empty $@
 	otc 1 upgrade_master
 	sleep 2
 	otc 1 "check_namespaces 120"
@@ -230,7 +297,6 @@ test_upgrade() {
 ##     Upgrade K8s while ctraffic is running
 test_upgrade_with_traffic() {
 	test -n "$__newver" || __newver=master
-	tcase "=== k8s-test: upgrade to $__newver with traffic"
 	export __newver
 	test_start
 
@@ -260,7 +326,6 @@ test_upgrade_with_traffic() {
 ##   test ctraffic_pod_restart
 ##     Restart a POD while ctraffic is running
 test_ctraffic_pod_restart() {
-	tcase "=== Restart a POD while ctraffic is running"
 	test_start $@
 
 	otc 201 "add_srccidr"
@@ -291,9 +356,8 @@ test_kube_proxy() {
 ##   test setcap
 ##     Test that get/setcap works in a non-root container
 test_setcap() {
-	tlog "=== k8s-test: Test that get/setcap works in a non-root container"
 	test_start_empty $@
-	otc 1 start_alpine_test
+	otc 1 "daemonset alpine-test"
 	otc 1 check_setcap
 	xcluster_stop
 }
@@ -302,8 +366,8 @@ test_setcap() {
 test_host_access() {
 	tlog "=== k8s-test: Test external access to ssh(22) via a VIP address"
 	test_start $@
-	otc 201 "negative_access 1000::1"
-	otc 201 "negative_access 10.0.0.1"
+	otc 201 "negative_access $PREFIX:10.0.0.0"
+	otc 201 "negative_access 10.0.0.0"
 	xcluster_stop
 }
 ##   test source_ranges
@@ -318,15 +382,6 @@ test_source_ranges() {
 	otc 201 neg_source_ranges_access
 	otc 201 "negative_access 1000::8"
 	otc 201 "negative_access 10.0.0.8"
-	xcluster_stop
-}
-##   test huge_pages
-##     Test huge-pages in a POD
-test_huge_pages() {
-	tcase "Test huge-pages in a POD"
-	test_start_hugep $@
-	otcwp mount_hugep
-	otc 1 start_hugep
 	xcluster_stop
 }
 ##   test udp_over_sync
@@ -355,25 +410,11 @@ test_reroute() {
 	otc 201 "ctraffic_check --no-fail /tmp/ctraffic.out"
 	xcluster_stop
 }
-##   test big_cluster [--pods-per-node=4]
-##     Use --nvm=N to create a big cluster. Nx4 Mserver PODs will be
-##     deployed.
-test_big_cluster() {
-	test -n "$__nrouters" || export __nrouters=1
-	test -n "$__nvm" || export __nvm=20
-	test -n "$__pods_per_node" || __pods_per_node=4
-	export xcluster_PREFIX=$PREFIX
-	test_start_empty $@
-	otcwp conntrack_size
-	otcr "conntrack_size 40000"
-	local targets=$((__nvm * __pods_per_node))
-	local nconn=$((targets * 25))
-	otc 1 "mserver2 $targets"
-	otc 201 "xmconnect 10.0.0.10 $nconn $targets 60"
-	xcluster_stop
-}
 
+test -z "$__nvm" && __nvm=X
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
+test "$__nvm" = "X" && unset __nvm
+
 indent=''
 . /etc/profile
 
