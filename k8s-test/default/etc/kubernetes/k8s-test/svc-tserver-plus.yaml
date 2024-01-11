@@ -5,6 +5,9 @@ metadata:
 spec:
   type: LoadBalancer
   ipFamilyPolicy: RequireDualStack
+  externalIPs:
+    - 10.0.0.35
+    - "fd00::10.0.0.35"
   selector:
     app: tserver
   ports:

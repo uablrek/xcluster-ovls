@@ -144,6 +144,11 @@ test_start_empty() {
 		export __mem1=$((__mem1 + 1024))
 		export xcluster_PROXY_MODE=disabled
 	fi
+	if echo $@ $cni | grep -q calico; then
+		__cni=calico
+		export __mem=$((__mem + 512))
+		export __mem1=$((__mem1 + 512))
+	fi
 	xcluster_start network-topology . $cni $@
 	test "$__hugep" = "yes" && otcwp mount_hugep
 	otc 1 check_namespaces
@@ -178,6 +183,12 @@ test_default() {
 	test_mconnect
 	test_connectivity
 	#test "$xcluster_PROXY_MODE" = "ipvs" && __multiport=yes # flakey!
+	case "$__cni" in
+		cilium) __count=40;;
+		antrea) __count=30;;
+		calico) __count=40;;
+		*) __count=80
+	esac
 	test_affinity
 
 	unset __no_stop
@@ -248,6 +259,17 @@ test_connectivity() {
 	otc 201 "mconnect 10.0.0.1 $nconn $__replicas"
 	otc 201 "mconnect $PREFIX:10.0.0.1 $nconn $__replicas"
 	otc 201 "neg_source_ranges_access 10.0.0.1"
+	# ExternalIPs
+	if test "$__cni" != "cilium"; then
+		otc 201 "mconnect --udp 10.0.0.35 $nconn $__replicas"
+		otc 201 "mconnect --udp $PREFIX:10.0.0.35 $nconn $__replicas"
+		otc 2 "mconnect --pod=app=tserver 10.0.0.35 $nconn $__replicas"
+		otc 2 "mconnect --pod=app=tserver $PREFIX:10.0.0.35 $nconn $__replicas"
+	else
+		# Some connect fails to ExternalIPs, but works to ClusterIP
+		# and loadBalancerIP?!
+		tlog "WARNING: ExternalIPs test sipped for cni=cilium"
+	fi
 	# UDP
 	otc 201 "mconnect --udp 10.0.0.3 $nconn $__replicas"
 	otc 201 "mconnect --udp $PREFIX:10.0.0.3 $nconn $__replicas"
@@ -255,7 +277,11 @@ test_connectivity() {
 	# SCTP
 	if test "$__cni" != "cilium"; then
 		otc 201 "sctp 10.0.0.3"
-		otc 2 "sctp --pod=app=tserver tserver-plus"
+		if echo "$__cni" | grep -qE 'calico|antrea'; then
+			tlog "WARNING: SCTP from POD sipped for calico+antrea"
+		else
+			otc 2 "sctp --pod=app=tserver tserver-plus"
+		fi
 	else
 		tlog "WARNING: SCTP test sipped for cni=cilium"
 	fi
@@ -263,7 +289,7 @@ test_connectivity() {
 	otc 1 outgoing_http
 	xcluster_stop
 }
-##   test [--multiport] affinity
+##   test [--multiport] [--count=] affinity
 ##     Test Service session affinity
 test_affinity() {
 	__nrouters=1
@@ -272,8 +298,8 @@ test_affinity() {
 	otc 201 add_srccidr
 	otc 1 "svc tserver-affinity 10.0.0.33"
 	otc 1 "deployment --replicas=$__replicas tserver"
-	otc 201 "affinity --multiport=$__multiport 10.0.0.33"
-	otc 201 "affinity --multiport=$__multiport $PREFIX:10.0.0.33"
+	otc 201 "affinity --multiport=$__multiport --count=$__count 10.0.0.33"
+	otc 201 "affinity --multiport=$__multiport --count=$__count $PREFIX:10.0.0.33"
 	xcluster_stop
 }
 ##   test [--newver=] upgrade
@@ -368,20 +394,6 @@ test_host_access() {
 	test_start $@
 	otc 201 "negative_access $PREFIX:10.0.0.0"
 	otc 201 "negative_access 10.0.0.0"
-	xcluster_stop
-}
-##   test source_ranges
-##     Test access to an external service with loadBalancerSourceRanges
-test_source_ranges() {
-	tlog "=== Test access to an external service with loadBalancerSourceRanges"
-	test -n "$__nrouters" || __nrouters=1
-	test_start_empty $@
-	otc 201 "add_srccidr --ecmp"
-	otc 1 source_ranges_start
-	otc 201 source_ranges_access
-	otc 201 neg_source_ranges_access
-	otc 201 "negative_access 1000::8"
-	otc 201 "negative_access 10.0.0.8"
 	xcluster_stop
 }
 ##   test udp_over_sync

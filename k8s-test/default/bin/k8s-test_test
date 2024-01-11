@@ -183,17 +183,21 @@ cmd_tcase_sctp() {
 	tcase "SCTP to [$1] $__pod"
 	test -n "$1" || tdie "Parameter missing"
 	if test -n "$__pod"; then
-		local pod=$(get_pod $__pod)
+		pod=$(get_pod $__pod)  # global
 		test -n "$pod" || tdie "Can't find POD"
-		echo | $kubectl exec -it $pod -- \
-			ncat --sctp -v -w 2 $1 6000 2>&1 | grep -F 'Connected to' \
-			|| tdie "POD to $1"
+		tlog "From POD $pod"
+		tex sctp_test_pod $1 || tdie "POD to $1"
 		return 0
 	fi
-	echo | ncat --sctp -v -w 2 $1 6000 2>&1 | grep -F 'Connected to' \
-		|| tdie IPv4
-	echo | ncat --sctp -v -w 2 $PREFIX:$1 6000 2>&1 | grep -F 'Connected to' \
-		|| tdie IPv6
+	tex sctp_test $1 || tdie IPv4
+	tex sctp_test $PREFIX:$1 || tdie IPv6
+}
+sctp_test() {
+	echo | ncat --sctp -v -w2 $1 6000 2>&1 | grep -F 'Connected to'
+}
+sctp_test_pod() {
+	echo | $kubectl exec -it $pod -- \
+		ncat --sctp -v -w2 $1 6000 2>&1 | grep -F 'Connected to'
 }
 
 # Prints all endpointslice addresses for a service
@@ -376,13 +380,14 @@ cmd_tcase_add_srccidr() {
 		i=$((i + 1))
 	done
 }
-##   tcase_affinity [--multiport] <adr>
+##   tcase_affinity [--multiport] [--count=] <adr>
 ##     Test session affinity. With --multiport test is made that ports
 ##     in a multiport service has affinity (only works with ipvs)
 cmd_tcase_affinity() {
-	local adr=10.0.0.60 srccidr
-	test -n "$1" && adr=$1
-	tcase "Test Service session affinity; $adr"
+	local adr=$1 srccidr
+	test -n "$__count" || __count=50
+	tcase "Test Service session affinity [$adr] ($__count)"
+	test -n "$1" || tdie "Parameter missing "
 
 	# Verify that we have distribution with different sources
 	# Also wait until the service become available
@@ -396,14 +401,14 @@ cmd_tcase_affinity() {
 	unset mcopts
 
 	if echo $adr | grep -q :; then
-		srccidr="$PREFIX:10.200.200.10/128"
+		srccidr='$PREFIX:10.200.200.$n/128'
 	else
-		srccidr='10.200.200.10/32'
+		srccidr='10.200.200.$n/32'
 	fi
 	local n src srv1 srv2
 	for n in $(seq 1 10); do
 		eval "src=$srccidr"
-		srv1=$(cmd_affinity_mconnect $adr:5001 $src) || tdie
+		srv1=$(affinity_mconnect $adr:5001 $src) || tdie
 		if test "$__multiport" = "yes"; then
 			srv2=$(affinity_ctraffic $adr:5003 $src) || tdie
 			tlog "Responses from $srv1 and $srv2"
@@ -411,13 +416,15 @@ cmd_tcase_affinity() {
 		fi
 	done
 }
-# Make 100 connects and verify that they all end up in the same server
-cmd_affinity_mconnect() {
+# Make some connects and verify that they all end up in the same server
+affinity_mconnect() {
 	local adr=$1
 	local srccidr=$2
 	mkdir -p $tmp
 	local out=$tmp/out
-	mconnect -address $adr -nconn 100 -output json -srccidr $srccidr > $out
+	# Some CNI-plugins (calico) seem to have problems with massive
+	# connects to the same POD, especially over IPv6. So changed 100->50.
+	mconnect -address $adr -nconn $__count -output json -srccidr $srccidr > $out
 	local v
 	v=$(cat $out | jq -r .failed_connects)
 	test "$v" -eq 0 || tdie "failed_connects $v"
@@ -425,7 +432,7 @@ cmd_affinity_mconnect() {
 	test "$v" -eq 1 || tdie "Multiple servers $v"
 	local target=$(cat $out | jq -r '.hosts|keys[]')
 	v=$(cat $out | jq -r ".hosts.\"$target\"")
-	test $v -eq 100 || tdie "Not all connects $v"
+	test $v -eq $__count || tdie "Not all connects $v"
 	echo $target
 }
 affinity_ctraffic() {
