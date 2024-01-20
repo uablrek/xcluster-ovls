@@ -125,7 +125,7 @@ cmd_test() {
 test_start_empty() {
 	cd $dir
 	test -n "$__nrouters" || export __nrouters=1
-	xcluster_start network-topology k8s-pv . $@
+	xcluster_start network-topology . $@
 	otc 1 check_namespaces
 	otc 1 check_nodes
 	otcr vip_routes
