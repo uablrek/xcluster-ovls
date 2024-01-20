@@ -178,7 +178,7 @@ cmd_tcase_outgoing_http() {
 		| grep -q vm-201 || tdie IPv4
 }
 ##   tcase_sctp [--pod=selector] <adr>
-##     Test SCTP (port 6000)
+##     Test SCTP (port 6000). Both IPv4 and IPv6 is tested
 cmd_tcase_sctp() {
 	tcase "SCTP to [$1] $__pod"
 	test -n "$1" || tdie "Parameter missing"
@@ -358,16 +358,12 @@ cmd_tcase_kube_proxy_restart() {
 }
 
 cmd_tcase_add_srccidr() {
-	tcase "Add ($PREFIX:)10.200.200.0/24 to dev lo"
-	ip addr replace 10.200.200.0/24 dev lo || tdie
-	ip -6 addr replace $PREFIX:10.200.200.0/120 dev lo || tdie
-	ip -6 ro replace local $PREFIX:10.200.200.0/120 dev lo
+	tcase "Add ($PREFIX:)10.200.0.0/16 to dev lo"
+	ip addr replace 10.200.0.0/16 dev lo || tdie
+	ip -6 addr replace $PREFIX:10.200.0.0/112 dev lo || tdie
+	ip -6 ro replace local $PREFIX:10.200.0.0/112 dev lo
 	sysctl -w net.ipv4.ip_nonlocal_bind=1
 	sysctl -w net.ipv6.ip_nonlocal_bind=1
-	if test "$__ecmp" != "yes"; then
-		ip ro replace 10.0.0.0/24 via 192.168.1.2
-		ip -6 ro replace 1000::/120 via $PREFIX:192.168.1.2
-	fi
 	# Create address files
 	local i=0 out=/tmp/addresses
 	while test $i -lt 255; do

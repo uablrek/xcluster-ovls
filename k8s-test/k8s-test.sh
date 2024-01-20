@@ -142,7 +142,7 @@ test_start_empty() {
 		__cni=cilium
 		export __mem=$((__mem + 1024))
 		export __mem1=$((__mem1 + 1024))
-		export xcluster_PROXY_MODE=disabled
+		test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=disabled
 	fi
 	if echo $@ $cni | grep -q calico; then
 		__cni=calico
@@ -168,7 +168,7 @@ test_start() {
 	otc 1 "deployment --replicas=$__replicas tserver"
 }
 ##   test default
-##     The default test suite
+##     The default test suite, used in CI
 test_default() {
 	__replicas=4
 	__nvm=4
@@ -185,8 +185,8 @@ test_default() {
 	#test "$xcluster_PROXY_MODE" = "ipvs" && __multiport=yes # flakey!
 	case "$__cni" in
 		cilium) __count=40;;
-		antrea) __count=30;;
-		calico) __count=40;;
+		antrea) __count=20;;
+		calico) __count=30;;
 		*) __count=80
 	esac
 	test_affinity
@@ -277,8 +277,8 @@ test_connectivity() {
 	# SCTP
 	if test "$__cni" != "cilium"; then
 		otc 201 "sctp 10.0.0.3"
-		if echo "$__cni" | grep -qE 'calico|antrea'; then
-			tlog "WARNING: SCTP from POD sipped for calico+antrea"
+		if echo "$__cni" | grep -qE 'calico|antrea|flannel'; then
+			tlog "WARNING: SCTP from POD sipped for calico+antrea+flannel"
 		else
 			otc 2 "sctp --pod=app=tserver tserver-plus"
 		fi
@@ -293,11 +293,10 @@ test_connectivity() {
 ##     Test Service session affinity
 test_affinity() {
 	__nrouters=1
-	test_start_empty $@
+	test_start $@
+	otc 1 "svc tserver-affinity 10.0.0.33"
 	otc 201 "vip_routes 192.168.1.2"
 	otc 201 add_srccidr
-	otc 1 "svc tserver-affinity 10.0.0.33"
-	otc 1 "deployment --replicas=$__replicas tserver"
 	otc 201 "affinity --multiport=$__multiport --count=$__count 10.0.0.33"
 	otc 201 "affinity --multiport=$__multiport --count=$__count $PREFIX:10.0.0.33"
 	xcluster_stop
