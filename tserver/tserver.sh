@@ -50,6 +50,13 @@ cmd_env() {
 		return 0
 	fi
 
+	if echo "$xcluster_PROXY_MODE" | grep -q nftables; then
+		if test -z "$xcluster_FEATURE_GATES"; then
+			export xcluster_FEATURE_GATES=NFTablesProxyMode=true
+			log "Set NFTablesProxyMode=true"
+		fi
+	fi
+
 	test -n "$xcluster_DOMAIN" || xcluster_DOMAIN=xcluster
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
@@ -145,16 +152,16 @@ test_start() {
 	test -n "$__replicas" || __replicas=4
 	local ctsize=$((__replicas * 4000 + 20000))
 	otcr "conntrack_size $ctsize"
-	otc 1 "start_tserver --replicas=$__replicas --nodes=$__nodes"
+	otc 1 "deployment --replicas=$__replicas --nodes=$__nodes tserver"
 }
 ##   test --replicas=1 start_mini_svc
 ##     Start cluster with the "tserver-mini" svc and VIP route to vm-002
 test_start_mini_svc() {
 	test_start_empty $@
 	test -n "$__replicas" || __replicas=1
-	otc 1 "create_1svc tserver-mini"
+	otc 1 "svc tserver-mini"
 	otcr "vip_route 192.168.1.2"
-	otc 1 "start_tserver --replicas=$__replicas --nodes=$__nodes"
+	otc 1 "deployment --replicas=$__replicas --nodes=$__nodes tserver"
 }
 ##   test start_narrow_svc [--replicas=4]
 ##     Start cluster with svc's and VIP route to vm-002
@@ -167,15 +174,15 @@ test_start_narrow_svc() {
 ##     Start with the "kahttp-np" svc using NodePorts
 test_start_kahttp_np() {
 	test_start $@
-	otc 1 "create_1svc kahttp-np 10.0.0.61"
-	#otc 1 "create_1svc kahttp-np"
+	otc 1 "svc kahttp-np 10.0.0.61"
+	#otc 1 "svc kahttp-np"
 }
 ##   test start_daemonset
 ##     Start with a DaemonSet and a externalTrafficPolicy:Local svc
 test_start_daemonset() {
 	test_start_empty $@
 	otcr "vip_route 192.168.1.2"
-	otc 1 "create_1svc etp-local 10.0.0.60"
+	otc 1 "svc etp-local 10.0.0.60"
 	otc 1 "start_daemonset"
 }
 ##   test antrea
@@ -202,7 +209,7 @@ test_lb_sourceranges() {
 	__ntesters=1
 	test_start $@
 	otcr "vip_route 192.168.1.2"
-	otc 1 "create_1svc lb-sourceranges 10.0.0.10"
+	otc 1 "svc lb-sourceranges 10.0.0.10"
 	otc 221 "traffic --replicas=$__replicas 10.0.0.10"
 	otc 201 "deny_external_traffic 10.0.0.10"
 	otc 2 "traffic --replicas=$__replicas lb-sourceranges.default.svc.xcluster"

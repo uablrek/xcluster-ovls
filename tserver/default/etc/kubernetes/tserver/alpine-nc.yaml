@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alpine-nc
+spec:
+  selector:
+    matchLabels:
+      app: alpine-nc
+  replicas: 4
+  template:
+    metadata:
+      labels:
+        app: alpine-nc
+    spec:
+      containers:
+      - name: alpine
+        image: alpine:latest
+        imagePullPolicy: IfNotPresent
+        command: ["nc", "-lk", "-p", "7007", "-e", "hostname"]
+        ports:
+        - name: nc
+          containerPort: 7007
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alpine-nc
+spec:
+  ipFamilyPolicy: RequireDualStack
+  selector:
+    app: alpine-nc
+  type: LoadBalancer
+  ports:
+  - port: 7007
+    name: nc

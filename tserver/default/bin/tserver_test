@@ -56,18 +56,22 @@ cmd_tcase_vip_route() {
 	ip -6 ro replace $PREFIX:10.0.0.0/120 via $PREFIX:$1 || tdie ipv6
 }
 
-##   tcase_start_tserver
+##   tcase_deployment
 ##     Start a deployment
-cmd_tcase_start_tserver() {
-	local deployment=tserver
-	test -n "$1" && deployment=$1
-	tcase "Start deployment $deployment"
-	test -n "$__replicas" &&
-		sed -i -e "s,replicas: 4,replicas: $__replicas," $yamld/$deployment.yaml
+cmd_tcase_deployment() {
+	tcase "Start deployment [$1]"
+	test -n "$1" || tdie "No deployment"
+	local deployment=$1
+	local f=$yamld/$deployment.yaml
+	test -r $f || tdie "Not readable [$f]"
+	if test -n "$__replicas"; then
+		tlog "Setting replicas=$__replicas"
+		sed -i -E "s,replicas: [0-9]+,replicas: $__replicas," $f
+	fi
 	if test -n "$__nodes"; then
 		# Use a nodeSelector
 		tlog "Starting on nodes [$__nodes]"
-		sed -i -e "s,#example.com,example.com," $yamld/$deployment.yaml
+		sed -i -e "s,#example.com,example.com," $f
 		local n vms
 		for n in $(echo $__nodes | tr , ' '); do
 			vms="$(printf "vm-%03d" $n) $vms"
@@ -75,7 +79,7 @@ cmd_tcase_start_tserver() {
 		kubectl label nodes $vms example.com/server=tserver || \
 			die "Failed to label nodes [$vms]"
 	fi
-	kubectl create -f $yamld/$deployment.yaml
+	kubectl create -f $f || tdie "kubectl create"
 	test_deployment $deployment 180
 }
 ##   tcase_start_daemonset
@@ -96,10 +100,10 @@ cmd_tcase_create_svc() {
 	assign-lb-ip -svc tserver-udp -ip 10.0.0.52,$PREFIX:10.0.0.52
 	assign-lb-ip -svc tserver-sctp -ip 10.0.0.52,$PREFIX:10.0.0.52
 }
-##   tcase_create_1svc <name> [vip]
-##     Create one service and assign lb-ip
-cmd_tcase_create_1svc() {
-	tcase "Create service $1 with vip [$2]"
+##   tcase_svc <name> [vip]
+##     Create a service and assign lb-ip
+cmd_tcase_svc() {
+	tcase "Create service [$1] ($2)"
 	test -n "$1" || tdie "Parameters missing"
 	local name=$1 vip=$2
 	local f=$yamld/$name.yaml

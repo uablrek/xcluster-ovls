@@ -1,0 +1,7 @@
+#! /bin/sh
+. /etc/profile
+
+test -z "$IPVS_SCHEDULER" && return 0
+
+sed -i -e "s,scheduler:.*,scheduler: \"$IPVS_SCHEDULER\"," /etc/kubernetes/kube-proxy.config
+
