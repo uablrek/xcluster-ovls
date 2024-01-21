@@ -27,7 +27,7 @@ test -n "$1" || help
 echo "$1" | grep -qi "^help\|-h" && help
 
 log() {
-	echo "$prg: $*" >&2
+	echo "$*" >&2
 }
 dbg() {
 	test -n "$__verbose" && echo "$prg: $*" >&2
@@ -36,34 +36,37 @@ dbg() {
 ##   env
 ##     Print environment.
 cmd_env() {
+	test "$envset" = "yes" && return 0
+	envset=yes
 	test -n "$PREFIX" || PREFIX=fd00:
 	test -n "$__nvm" || __nvm=4
 	test -n "$__nrouters" || __nrouters=1
 	test -n "$__registry" || __registry=docker.io/uablrek
 	test -n "$__replicas" || __replicas=4
 	test -n "$KUBERNETESD" || KUBERNETESD=$HOME/tmp/kubernetes
-	if test "$cmd" = "env"; then
-		local opt="registry|nvm|nrouters|replicas"
-		set | grep -E "^(__($opt)|KUBERNETESD)="
-		return 0
-	fi
-
-	images=$($XCLUSTER ovld images)/images.sh
 	test -n "$xcluster_DOMAIN" || export xcluster_DOMAIN=xcluster
 	test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=ipvs
-	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
-	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
-	eval $($XCLUSTER env)
 	if echo "$xcluster_PROXY_MODE" | grep -q nftables; then
-		tlog "Set feature-gate [NFTablesProxyMode=true]"
+		log "Set feature-gate [NFTablesProxyMode=true]"
 		export xcluster_FEATURE_GATES=NFTablesProxyMode=true
 	fi
 	export xcluster_PREFIX=$PREFIX
+
+	if test "$cmd" = "env"; then
+		local opt="registry|nvm|nrouters|replicas|log"
+		local xenv="DOMAIN|PROXY_MODE|FEATURE_GATES|PREFIX"
+		set | grep -E "^(__($opt)|KUBERNETESD|xcluster_($xenv))="
+		exit 0
+	fi
+
+	images=$($XCLUSTER ovld images)/images.sh
+	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
+	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
+	eval $($XCLUSTER env)
 }
 ##   pack_k8s --dest=<dir> [--newver=master]
 ##     Pack the K8s binaries into an archive (called from ./tar on upgrade)
 cmd_pack_k8s() {
-	cmd_env
 	test -n "$__dest" || die "No --dest"
 	test -n "$__newver" || __newver=master
 	local k8sd=$GOPATH/src/k8s.io/kubernetes/_output/bin
@@ -82,7 +85,6 @@ cmd_pack_k8s() {
 ##   build_alpine_test
 ##     Build the "alpine-test" image and upload to local-reg
 cmd_build_alpine_test() {
-	cmd_env
 	local tag=$__registry/alpine-test:latest
 	local dockerfile=$dir/alpine-test/Dockerfile
 	mkdir -p $tmp
@@ -92,7 +94,6 @@ cmd_build_alpine_test() {
 ##   build_sctpt
 ##     Build the "sctpt" utility
 cmd_build_sctpt() {
-	cmd_env
 	local d=$($XCLUSTER ovld sctp)
 	make -j$(nproc) -C $d/src || die make
 }
@@ -100,22 +101,26 @@ cmd_build_sctpt() {
 ##   test [--xterm] [--no-stop] [test x-ovls...] > logfile
 ##     Exec tests
 cmd_test() {
-	cmd_env
 	cd $dir
 	start=starts
 	test "$__xterm" = "yes" && start=start
 	rm -f $XCLUSTER_TMP/cdrom.iso
 
+	local t=default
 	if test -n "$1"; then
 		local t=$1
 		shift
-		test_$t $@
-	else
-		test_default
 	fi		
 
+	if test -n "$__log"; then
+		date > $__log || die "Can't write to log [$__log]"
+		test_$t $@ >> $__log
+	else
+		test_$t $@
+	fi
+
 	now=$(date +%s)
-	tlog "Xcluster test ended. Total time $((now-begin)) sec"
+	log "Xcluster test ended. Total time $((now-begin)) sec"
 }
 
 ##   test [--hugep] [--wait] start_empty
@@ -451,6 +456,7 @@ long_opts=`set | grep '^__' | cut -d= -f1`
 
 # Execute command
 trap "die Interrupted" INT TERM
+cmd_env
 cmd_$cmd "$@"
 status=$?
 rm -rf $tmp
