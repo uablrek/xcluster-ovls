@@ -12,6 +12,12 @@ die() {
 log() {
 	echo "INFO: $*" >&2
 }
+findf() {
+	f=$ARCHIVE/$1
+	test -r $f && return
+	f=$HOME/Downloads/$1
+	test -r $1 || die "Can't find [$1]"
+}
 
 test -n "$1" || die "No out-file"
 
@@ -22,9 +28,7 @@ f=$GOPATH/src/github.com/Nordix/ctraffic/image/ctraffic
 if test -x $f; then
 	cp $f $tmp/bin
 else
-	f=$ARCHIVE/ctraffic.gz
-	test -r $f || f=$HOME/Downloads/ctraffic.gz
-	test -r $f || die "Not readable [$f]"
+	findf ctraffic.gz
 	gzip -cd $f > $tmp/bin/ctraffic || die "Failed to uncompress [$f]"
 	chmod a+x $tmp/bin/ctraffic
 fi

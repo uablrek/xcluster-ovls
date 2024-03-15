@@ -28,5 +28,5 @@ variables. By default conformance tests for services are executed.
 export FOCUS='\[sig-network\].*ervice.*'  # select all service tests
 export SKIP='Disruptive|Serial|ESIPP|DNS|GCE|finalizer|ServiceCIDRs'
 export FOCUS='\[sig-node\].*[Cc]onformance.*'
-export SKIP='Disruptive|Serial|with.secret'
+export SKIP='Disruptive|Serial|with.secret|Slow'
 ```

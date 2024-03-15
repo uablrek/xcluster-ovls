@@ -10,8 +10,9 @@ spec:
   #allocateLoadBalancerNodePorts: false
   #externalTrafficPolicy: Local
   #internalTrafficPolicy: Local
+  #healthCheckNodePort: 30955
   ports:
   - port: 5001
-  #  name: mconnect
+    name: mconnect
   #- port: 5004
   #  name: nc

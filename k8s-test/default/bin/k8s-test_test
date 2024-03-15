@@ -131,7 +131,8 @@ family() {
 cmd_tcase_nslookup() {
 	tcase "nslookup $1"
 	test -n "$1" || tdie "No DN"
-	nslookup $1 2>&1 | grep -qE "Name:.+$1"
+	nslookup $1 2>&1  # For logging
+	nslookup $1 2>&1 | grep -qiE "Name:.+$1"
 }
 ##   tcase_headless_services
 ##     Check addresses of headless services

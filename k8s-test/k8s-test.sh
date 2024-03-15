@@ -113,6 +113,7 @@ cmd_test() {
 	fi		
 
 	if test -n "$__log"; then
+		mkdir -p $(dirname "$__log")
 		date > $__log || die "Can't write to log [$__log]"
 		test_$t $@ >> $__log
 	else

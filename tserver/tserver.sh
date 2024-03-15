@@ -120,13 +120,18 @@ cmd_test() {
 	test "$__xterm" = "yes" && start=start
 	rm -f $XCLUSTER_TMP/cdrom.iso
 
+	local t=connectivity
 	if test -n "$1"; then
 		local t=$1
 		shift
-		test_$t $@
-	else
-		test_connectivity
 	fi		
+
+	if test -n "$__log"; then
+		date > $__log || die "Can't write to log [$__log]"
+		test_$t $@ >> $__log
+	else
+		test_$t $@
+	fi
 
 	now=$(date +%s)
 	tlog "Xcluster test ended. Total time $((now-begin)) sec"
