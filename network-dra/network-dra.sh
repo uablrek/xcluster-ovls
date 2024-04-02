@@ -36,12 +36,14 @@ cmd_env() {
 	test -n "$__nrouters" || __nrouters=1
 	test -n "$xcluster_API_FLAGS" || xcluster_API_FLAGS="--runtime-config=resource.k8s.io/v1alpha2=true"
 	export xcluster_FEATURE_GATES=DynamicResourceAllocation=true
+	test -n "$KIND_NAME" || KIND_NAME=network-dra
+	test -n "$KIND_CONFIG" || KIND_CONFIG=$dir/config/kind-$KIND_NAME.yaml
 	test -n "$NETWORK_DRA_DIR" || NETWORK_DRA_DIR=$GOPATH/src/github.com/LionelJouin/network-dra
 	S=$NETWORK_DRA_DIR
 
 	if test "$cmd" = "env"; then
 		local opt="nvm|nrouters|log"
-		set | grep -E "^(__($opt)|xcluster_.*|NETWORK_DRA.*)="
+		set | grep -E "^(__($opt)|xcluster_.*|NETWORK_DRA.*|KIND_.*)="
 		exit 0
 	fi
 
@@ -113,6 +115,15 @@ cmd_test() {
 	now=$(date +%s)
 	log "Xcluster test ended. Total time $((now-begin)) sec"
 }
+##   kind
+##   kind --stop
+##     Start or stop the KinD cluster
+cmd_kind() {
+	kind delete cluster --name $KIND_NAME
+	test "$__stop" = "yes" && return 0
+	kind create cluster --name $KIND_NAME --config $KIND_CONFIG $@ || die
+}
+
 ##   test [--wait] start_empty
 ##     Start empty cluster
 test_start_empty() {
@@ -130,7 +141,7 @@ test_start_empty() {
 ##   test start
 ##     Start cluster and install multus and network-dra
 test_start() {
-	test_start_empty
+	test_start_empty $@
 	tcase "Taint the master node [vm-001]"
 	kubectl label nodes vm-001 node-role.kubernetes.io/control-plane=''
 	kubectl taint nodes vm-001 node-role.kubernetes.io/control-plane:NoSchedule
