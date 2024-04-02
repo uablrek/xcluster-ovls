@@ -1,0 +1,129 @@
+#! /bin/sh
+##
+## network-dra_test --
+##
+##   Test script for network-dra executed in xcluster.
+##
+## Commands;
+##
+
+prg=$(basename $0)
+dir=$(dirname $0); dir=$(readlink -f $dir)
+me=$dir/$prg
+tmp=/tmp/${prg}_$$
+
+. /etc/profile
+test -n "$DOMAIN" || DOMAIN=xcluster
+test -n "$PREFIX" || PREFIX=fd00:
+yamld=/etc/kubernetes/network-dra
+
+die() {
+	echo "ERROR: $*" >&2
+	rm -rf $tmp
+	exit 1
+}
+help() {
+	grep '^##' $0 | cut -c3-
+	rm -rf $tmp
+	exit 0
+}
+test -n "$1" || help
+echo "$1" | grep -qi "^help\|-h" && help
+
+log() {
+	echo "$prg: $*" >&2
+}
+dbg() {
+	test -n "$__verbose" && echo "$prg: $*" >&2
+}
+
+cmd_tcase_check_namespaces() {
+	test_namespaces
+}
+cmd_tcase_check_nodes() {
+	test_nodes
+}
+##   tcase_vip_routes [via]
+##     Set VIP routes. Use ECMP if "via" is unspecified
+cmd_tcase_vip_routes() {
+	if test -n "$1"; then
+		tcase "Set VIP route via $1"
+        ip ro replace 10.0.0.0/24 via $1 || tdie Ipv4
+        ip -6 ro replace $PREFIX:10.0.0.0/120 via $PREFIX:$1 || tdie Ipv6
+	else
+		tcase "Set VIP route via ECMP"
+		if test "$TOPOLOGY" = "backend"; then
+			tlog "Using TOPOLOGY=backend"
+			vip_route 3
+			sed -i -e 's,192.168.1.1,192.168.3.1,' $KUBECONFIG
+		else
+			vip_route
+		fi
+	fi
+}
+##   tcase_wait
+##     Wait for serviceaccount "default" to appear
+cmd_tcase_wait() {
+	tcase 'Wait for serviceaccount "default" to appear'
+	pushv 60 60 1
+	tex kubectl get serviceaccount default 2>&1
+}
+##   tcase_multus
+##     Install cni plugins and start multus
+cmd_tcase_multus() {
+	tcase "Install cni plugins and start multus"
+	kubectl create -f $yamld/cni-install.yml.j2 || tdie
+	kubectl create -f $yamld/multus-daemonset-thick.yml || tdie
+	kubectl="kubectl -n kube-system"
+	test_daemonset install-cni-plugins 120
+	test_daemonset kube-multus-ds
+}
+##   tcase_network_dra
+##     Start network-dra
+cmd_tcase_network_dra() {
+	tcase "Start network-dra"
+	kubectl create -f $yamld/network-dra.yaml || tdie
+	test_deployment network-dra-controller
+	test_daemonset network-dra-plugin
+}
+
+##   tcase_daemonset <daemonset>
+##     Start a daemonset
+cmd_tcase_daemonset() {
+	tcase "Start daemonset [$1]"
+	test -n "$1" || tdie "No daemonset"
+	local f=$yamld/$1.yaml
+	test -r $f || tdie "Can't find manifest"
+	$kubectl apply -f $f || tdie "kubectl apply"
+	test_daemonset $1 120
+}
+
+. /usr/lib/xctest
+indent='  '
+
+##
+# Get the command
+cmd=$1
+shift
+grep -q "^cmd_$cmd()" $0 || die "Invalid command [$cmd]"
+
+while echo "$1" | grep -q '^--'; do
+	if echo $1 | grep -q =; then
+		o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
+		v=$(echo "$1" | cut -d= -f2-)
+		eval "$o=\"$v\""
+	else
+		o=$(echo "$1" | sed -e 's,-,_,g')
+		eval "$o=yes"
+	fi
+	shift
+done
+unset o v
+long_opts=`set | grep '^__' | cut -d= -f1`
+
+# Execute command
+trap "die Interrupted" INT TERM
+cmd_$cmd "$@"
+status=$?
+rm -rf $tmp
+exit $status
