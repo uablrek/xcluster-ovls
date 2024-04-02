@@ -4,3 +4,6 @@
 if test -n "$DOMAIN"; then
 	grep -q '^search' /etc/resolv.conf || echo "search $DOMAIN" >> /etc/resolv.conf
 fi
+
+cfg=/etc/init.d/26bridge.rc
+test -r $cfg && sed -i -e 's,0.4.0,0.3.1,' $cfg
