@@ -16,6 +16,7 @@ git clone https://github.com/LionelJouin/network-dra.git $NETWORK_DRA_DIR
 
 ## Basic test
 
+Manual:
 ```
 ./network-dra.sh test start
 # On a vm
@@ -23,7 +24,10 @@ kubectl create -f /etc/kubernetes/network-dra/demo-a.yaml
 kubectl exec demo-a -- ifconfig -a
 ```
 
-No extra network shows up. Troubleshooting in progress
+Automatic:
+```
+./network-dra.sh test
+```
 
 
 ## KinD

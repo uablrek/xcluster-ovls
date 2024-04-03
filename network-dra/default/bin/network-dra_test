@@ -72,10 +72,8 @@ cmd_tcase_wait() {
 ##     Install cni plugins and start multus
 cmd_tcase_multus() {
 	tcase "Install cni plugins and start multus"
-	kubectl create -f $yamld/cni-install.yml.j2 || tdie
 	kubectl create -f $yamld/multus-daemonset-thick.yml || tdie
 	kubectl="kubectl -n kube-system"
-	test_daemonset install-cni-plugins 120
 	test_daemonset kube-multus-ds
 }
 ##   tcase_network_dra
