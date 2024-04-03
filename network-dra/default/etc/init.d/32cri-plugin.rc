@@ -17,7 +17,8 @@ config_private_reg() {
 	cat >> $cfg <<EOF
 version = 2
 [plugins."io.containerd.grpc.v1.cri"]
-  sandbox_image = "registry.k8s.io/pause:3.8"
+  sandbox_image = "registry.k8s.io/pause:3.9"
+  enable_cdi = true
 EOF
 	cat >> $cfg <<EOF
 [plugins."io.containerd.grpc.v1.cri".registry]
@@ -46,7 +47,7 @@ config_private_reg2() {
 	cat >> $cfg <<EOF
 version = 3
 [plugins.'io.containerd.cri.v1.images'.PinnedImages]
-  sandbox = "registry.k8s.io/pause:3.8"
+  sandbox = "registry.k8s.io/pause:3.9"
 [plugins.'io.containerd.cri.v1.images'.registry]
   config_path = "$cfgpath"
 EOF

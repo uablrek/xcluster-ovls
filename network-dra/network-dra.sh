@@ -99,7 +99,7 @@ cmd_test() {
 	test "$__xterm" = "yes" && start=start
 	rm -f $XCLUSTER_TMP/cdrom.iso
 
-	local t=default
+	local t=pod
 	if test -n "$1"; then
 		local t=$1
 		shift
@@ -133,7 +133,9 @@ test_start_empty() {
 		. $($XCLUSTER ovld network-topology)/$TOPOLOGY/Envsettings
 	fi
 	export xcluster_API_FLAGS
-	xcluster_start network-topology . containerd $@
+	# NOTE: load "containerd" first!! We want to alter the config,
+	# and make sure "pause" have the correct version from start.
+	xcluster_start network-topology containerd . $@
 	otc 1 check_namespaces
 	otc 1 check_nodes
 	test "$__wait" = "yes" && otc 1 wait
@@ -147,6 +149,14 @@ test_start() {
 	kubectl taint nodes vm-001 node-role.kubernetes.io/control-plane:NoSchedule
 	otc 1 multus
 	otc 1 network_dra
+}
+##   test pod
+##     Start a POD with an additional interface
+test_pod() {
+	__wait=yes
+	test_start $@
+	otc 1 "start_pod demo-a"
+	xcluster_stop
 }
 
 ##

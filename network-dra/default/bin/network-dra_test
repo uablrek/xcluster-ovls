@@ -86,17 +86,28 @@ cmd_tcase_network_dra() {
 	test_deployment network-dra-controller
 	test_daemonset network-dra-plugin
 }
-
-##   tcase_daemonset <daemonset>
-##     Start a daemonset
-cmd_tcase_daemonset() {
-	tcase "Start daemonset [$1]"
-	test -n "$1" || tdie "No daemonset"
-	local f=$yamld/$1.yaml
-	test -r $f || tdie "Can't find manifest"
-	$kubectl apply -f $f || tdie "kubectl apply"
-	test_daemonset $1 120
+##   tcase_start_pod <pod> [$dev]
+##     Start a POD
+cmd_tcase_start_pod() {
+	tcase "Start POD [$1]"
+	test -n "$1" || tdie "No POD"
+	local dev=net1
+	test -n "$2" && dev=$2
+	local m=$yamld/$1.yaml
+	test -r $m || tdie "Not readable [$m]"
+	kubectl create -f $m || tdie "Create POD [$1]"
+	pushv 60
+	tex pod_running $1 || tdie "POD not running [$1]"
+	kubectl exec $1 -- ip link show $dev > /dev/null 2>&1 || \
+		tdie "Interface $dev doesn't exist in POD [$1]"
 }
+pod_running() {
+	test -n "$1" || tdie "No POD"
+	local phase=$(kubectl get pod $1 -o json | jq -r .status.phase)
+	test $? -eq 0 || tdie "Failed: get pod $1"
+	test "$phase" = "Running"
+}
+
 
 . /usr/lib/xctest
 indent='  '
