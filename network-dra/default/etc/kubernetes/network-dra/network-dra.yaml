@@ -136,7 +136,7 @@ spec:
       serviceAccountName: network-dra-service-account
       initContainers:
       - name: network-dra-plugin-init
-        image: network-dra-plugin:latest
+        image: example.com/network-dra-plugin:latest
         imagePullPolicy: IfNotPresent
         command:
         - mv
@@ -149,7 +149,7 @@ spec:
           mountPath: /network-dra-plugin-oci-hook
       containers:
       - name: network-dra-plugin
-        image: network-dra-plugin:latest
+        image: example.com/network-dra-plugin:latest
         imagePullPolicy: IfNotPresent
         command:
         - ./network-dra-plugin
@@ -223,7 +223,7 @@ spec:
       serviceAccountName: network-dra-service-account
       containers:
       - name: network-dra-controller
-        image: network-dra-controller:latest
+        image: example.com/network-dra-controller:latest
         imagePullPolicy: IfNotPresent
         command:
         - ./network-dra-controller

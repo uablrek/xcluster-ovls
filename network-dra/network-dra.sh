@@ -57,16 +57,15 @@ cmd_env() {
 cmd_manifests() {
 	local base_url=https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master
 	local dst=$dir/default/etc/kubernetes/network-dra
-	local f=cni-install.yml.j2
-	test -r $dst/$f -a "$__clean" != "yes" \
-		|| curl -L $base_url/e2e/templates/$f > $dst/$f
-	f=multus-daemonset-thick.yml
+	local f=multus-daemonset-thick.yml
 	test -r $dst/$f -a "$__clean" != "yes" \
 		|| curl -L $base_url/deployments/$f > $dst/$f
-	cd $S
-	test -r $dst/network-dra.yaml -a "$__clean" != "yes" || \
-		helm template network-dra deployments/network-DRA > $dst/network-dra.yaml
-	sed -i -e 's,localhost:5000/network-dra/,,' $dst/network-dra.yaml
+	if test "$__clean" = "yes" -o ! -r $dst/network-dra.yaml; then
+		cd $S
+		f=$dst/network-dra.yaml
+		helm template network-dra deployments/network-DRA > $f
+		sed -i -e 's,localhost:5000/network-dra/,example.com/,' $f
+	fi
 }
 ##   images [--force]
 ##     Load images to the private reg
@@ -85,9 +84,9 @@ cmd_images() {
 ##     Build the network-dra images, and upload to private registry
 cmd_build() {
 	cd $S
-	make BUILD_STEPS="build tag" || die make
-	$images lreg_upload docker.io/library/network-dra-controller:latest
-	$images lreg_upload docker.io/library/network-dra-plugin:latest
+	make BUILD_STEPS="build tag" BUILD_REGISTRY=example.com/ || die make
+	$images lreg_upload example.com/network-dra-controller:latest
+	$images lreg_upload example.com/network-dra-plugin:latest
 }
 
 ##
@@ -133,8 +132,6 @@ test_start_empty() {
 		. $($XCLUSTER ovld network-topology)/$TOPOLOGY/Envsettings
 	fi
 	export xcluster_API_FLAGS
-	# NOTE: load "containerd" first!! We want to alter the config,
-	# and make sure "pause" have the correct version from start.
 	xcluster_start network-topology containerd . $@
 	otc 1 check_namespaces
 	otc 1 check_nodes

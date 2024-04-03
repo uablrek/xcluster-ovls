@@ -34,7 +34,7 @@ Automatic:
 
 ```
 ./network-dra.sh kind
-kubectl create -f default/etc/kubernetes/network-dra/cni-install.yml.j2
+kubectl create -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/e2e/templates/cni-install.yml.j2
 kubectl create -f default/etc/kubernetes/network-dra/multus-daemonset-thick.yml
 kubectl create -f default/etc/kubernetes/network-dra/network-dra.yaml
 
