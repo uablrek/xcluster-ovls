@@ -1,0 +1,143 @@
+#! /bin/sh
+##
+## k8s-metrics-server_test --
+##
+##   Test script for k8s-metrics-server executed in xcluster.
+##
+## Commands;
+##
+
+prg=$(basename $0)
+dir=$(dirname $0); dir=$(readlink -f $dir)
+me=$dir/$prg
+tmp=/tmp/${prg}_$$
+
+. /etc/profile
+test -n "$DOMAIN" || DOMAIN=xcluster
+test -n "$PREFIX" || PREFIX=fd00:
+yamld=/etc/kubernetes/k8s-metrics-server
+
+die() {
+	echo "ERROR: $*" >&2
+	rm -rf $tmp
+	exit 1
+}
+help() {
+	grep '^##' $0 | cut -c3-
+	rm -rf $tmp
+	exit 0
+}
+test -n "$1" || help
+echo "$1" | grep -qi "^help\|-h" && help
+
+log() {
+	echo "$prg: $*" >&2
+}
+dbg() {
+	test -n "$__verbose" && echo "$prg: $*" >&2
+}
+
+cmd_tcase_check_namespaces() {
+	test_namespaces
+}
+cmd_tcase_check_nodes() {
+	test_nodes
+}
+##   tcase_vip_routes [via]
+##     Set VIP routes. Use ECMP if "via" is unspecified
+cmd_tcase_vip_routes() {
+	if test -n "$1"; then
+		tcase "Set VIP route via $1"
+        ip ro replace 10.0.0.0/24 via $1 || tdie Ipv4
+        ip -6 ro replace $PREFIX:10.0.0.0/120 via $PREFIX:$1 || tdie Ipv6
+	else
+		tcase "Set VIP route via ECMP"
+		if test "$TOPOLOGY" = "backend"; then
+			tlog "Using TOPOLOGY=backend"
+			vip_route 3
+			sed -i -e 's,192.168.1.1,192.168.3.1,' $KUBECONFIG
+		else
+			vip_route
+		fi
+	fi
+}
+##   tcase_wait
+##     Wait for serviceaccount "default" to appear
+cmd_tcase_wait() {
+	tcase 'Wait for serviceaccount "default" to appear'
+	pushv 60 60 1
+	tex kubectl get serviceaccount default 2>&1
+}
+##   tcase_svc <svc> [vip]
+##     Create a service and set the loadBalancerIP's (optional)
+cmd_tcase_svc() {
+	tcase "Create service [$1] ($2)"
+	test -n "$1" || tdie "No service"
+	local svc=$1
+	local f=$yamld/svc-$svc.yaml
+	test -r $f || f=$yamld/$svc.yaml
+	test -r $f || tdie "Can't find manifest"
+	$kubectl apply -f $f || tdie "kubectl apply"
+	if test -n "$2"; then
+		assign-lb-ip -svc $svc -ip $2,$PREFIX:$2 || tdie assign-lb-ip
+	fi
+}
+##   tcase_deployment [--replicas=] <deployment>
+##     Start a deployment
+cmd_tcase_deployment() {
+	tcase "Start deployment [$1] ($__replicas)"
+	test -n "$1" || tdie "No deployment"
+	local f=$yamld/$1.yaml
+	test -r $f || tdie "Can't find manifest"
+	test -n "$__replicas" && \
+		sed -i -E "s,replicas: [0-9]+,replicas: $__replicas," $f
+	$kubectl apply -f $f || tdie "kubectl apply"
+	test_deployment $1 120
+}
+##   tcase_daemonset <daemonset>
+##     Start a daemonset
+cmd_tcase_daemonset() {
+	tcase "Start daemonset [$1]"
+	test -n "$1" || tdie "No daemonset"
+	local f=$yamld/$1.yaml
+	test -r $f || tdie "Can't find manifest"
+	$kubectl apply -f $f || tdie "kubectl apply"
+	test_daemonset $1 120
+}
+##   tcase_metrics_server
+##     Check the metrics-server deployment
+cmd_tcase_metrics_server() {
+	kubectl="kubectl -n kube-system"
+	test_deployment metrics-server 120
+}
+
+
+. /usr/lib/xctest
+indent='  '
+
+##
+# Get the command
+cmd=$1
+shift
+grep -q "^cmd_$cmd()" $0 || die "Invalid command [$cmd]"
+
+while echo "$1" | grep -q '^--'; do
+	if echo $1 | grep -q =; then
+		o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
+		v=$(echo "$1" | cut -d= -f2-)
+		eval "$o=\"$v\""
+	else
+		o=$(echo "$1" | sed -e 's,-,_,g')
+		eval "$o=yes"
+	fi
+	shift
+done
+unset o v
+long_opts=`set | grep '^__' | cut -d= -f1`
+
+# Execute command
+trap "die Interrupted" INT TERM
+cmd_$cmd "$@"
+status=$?
+rm -rf $tmp
+exit $status
