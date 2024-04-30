@@ -7,3 +7,10 @@ fi
 
 cfg=/etc/init.d/26bridge.rc
 test -r $cfg && sed -i -e 's,0.4.0,0.3.1,' $cfg
+
+cfg=/etc/crio/crio.conf
+if test "$CRIO_RUNTIME" = "runc "-a -r $cfg; then
+	sed -i '/^default_runtime/c\default_runtime = "runc"' $cfg
+	sed -i '/^runtime = /c\runtime = "/bin/runc"' $cfg
+fi
+
