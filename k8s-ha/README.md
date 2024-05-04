@@ -28,8 +28,8 @@ As usual, check the ovl script help printout for functions, tests and
 start options:
 
 ```
+./k8s-ha.sh       # Help printout
 ./k8s-ha.sh env
-./k8s-ha.sh
 ```
 
 

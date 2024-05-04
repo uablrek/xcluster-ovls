@@ -48,6 +48,9 @@ findf() {
 ##   env
 ##     Print environment.
 cmd_env() {
+	test "$envset" = "yes" && return 0
+	envset=yes
+
 	test -n "$xcluster_MASTERS" || export xcluster_MASTERS=vm-001,vm-002,vm-003
 	test -n "$xcluster_ETCD_VMS" || export xcluster_ETCD_VMS="193 194 195"
 	etcd_size=$(echo $xcluster_ETCD_VMS | wc -w)
@@ -56,15 +59,13 @@ cmd_env() {
 	export xcluster_ETCD_VMS
 	test -n "$__cni" || __cni=bridge
 	test -n "$__keepalived_ver" || __keepalived_ver=2.2.8
-
-	# This is a cludge to fix the (silly) default __nvm=4 in the test env
-	test "$__nvm" = "X" && unset __nvm
+	test -n "$__nvm" || __nvm=7
 
 	if test "$cmd" = "env"; then
 		opts="cni|nvm|keepalived_ver"
 		xvar="MASTERS|ETCD_VMS|K8S_DISABLE|LB_VMS|ETCD_FAMILY"
 		set | grep -E "^(__($opts)|xcluster_($xvar))="
-		return 0
+		exit 0
 	fi
 
 	test -n "$xcluster_DOMAIN" || xcluster_DOMAIN=xcluster
@@ -77,7 +78,6 @@ cmd_env() {
 ##   keepalived --man [page]
 ##     Handle keepalived
 cmd_keepalived() {
-	cmd_env
 	test "$__build" = "yes" && __unpack=yes
 	test "$__unpack" = "yes" &&  __download=yes
 
@@ -144,7 +144,6 @@ cmd_keepalived() {
 ##     Stop VM emulation
 cmd_stop_vm() {
 	test -n "$1" || die "No VM"
-	cmd_env
 	local vm=$1
 	rsh $vm sync
 	local port=$((XCLUSTER_MONITOR_BASE + vm))
@@ -154,7 +153,6 @@ cmd_stop_vm() {
 ##     Reset and continue VM emulation
 cmd_reset_vm() {
 	test -n "$1" || die "No VM"
-	cmd_env
 	local vm=$1
 	local port=$((XCLUSTER_MONITOR_BASE + vm))
 	echo "system_reset\rcont" | nc -N localhost $port > /dev/null 2>&1
@@ -166,32 +164,40 @@ cmd_reset_vm() {
 ##   test [--xterm] [--no-stop] > $log   # default test
 ##     Exec tests
 cmd_test() {
-	cmd_env
 	start=starts
 	test "$__xterm" = "yes" && start=start
 	rm -f $XCLUSTER_TMP/cdrom.iso
 
+	local t=default
 	if test -n "$1"; then
 		local t=$1
 		shift
-		test_$t $@
-	else
-		export __cni
-		for t in etcd_vm_reboot master_reboot lb_reboot etcd_k8s_reboot; do
-			tlog "=========== $t"
-			$me test $t || tdie $t
-		done
 	fi		
 
+	if test -n "$__log"; then
+		mkdir -p $(dirname "$__log")
+		date > $__log || die "Can't write to log [$__log]"
+		test_$t $@ >> $__log
+	else
+		test_$t $@
+	fi
+
 	now=$(date +%s)
-	tlog "Xcluster test ended. Total time $((now-begin)) sec"
+	log "Xcluster test ended. Total time $((now-begin)) sec"
+}
+##   test default
+##     Combo test for CI
+test_default() {
+	export __cni
+	local t
+	for t in etcd_vm_reboot master_reboot lb_reboot etcd_k8s_reboot; do
+		tlog "=========== $t"
+		$me test $t || tdie $t
+	done
 }
 ##   test start_empty [--cni=bridge]
 ##     Start empty cluster
 test_start_empty() {
-	cd $dir
-	test -n "$__nvm" || __nvm=7
-	export __image=$XCLUSTER_HOME/hd-k8s-xcluster.img
 	test -n "$__nrouters" || export __nrouters=1
 	if test -n "$TOPOLOGY"; then
 		tlog "Using TOPOLOGY=$TOPOLOGY"
@@ -206,7 +212,6 @@ test_start_empty() {
 ##   test start
 ##     Start cluster
 test_start() {
-	test -n "$__nvm" || __nvm=7
 	test_start_empty $@
 	test "$xcluster_K8S_DISABLE" = "yes" && return 0
 
@@ -346,6 +351,8 @@ test_lb_reboot() {
 ##
 test -n "$__nvm" || __nvm=X    # Prevent default setting
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
+test "$__nvm" = "X" && unset __nvm
+
 indent=''
 
 # Get the command
@@ -369,6 +376,8 @@ long_opts=`set | grep '^__' | cut -d= -f1`
 
 # Execute command
 trap "die Interrupted" INT TERM
+cmd_env
+cd $dir
 cmd_$cmd "$@"
 status=$?
 rm -rf $tmp
