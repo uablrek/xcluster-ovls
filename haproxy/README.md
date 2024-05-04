@@ -20,7 +20,10 @@ make -j$(nproc) TARGET=linux-glibc USE_OPENSSL=1
 ## Test
 
 ```
-./haproxy.sh test start > $log
+# Automatic
+./haproxy.sh test
+# Manual
+./haproxy.sh test start
 # On vm-221:
 wget -q -O- http://192.168.2.201:8080/cgi-bin/info  # (repeat...)
 # On host:

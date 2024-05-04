@@ -21,6 +21,13 @@ test -x $f || die "Not executable [$f]"
 
 mkdir -p $tmp/bin
 $XCLUSTER install_prog --dest=$tmp $f
+f=/lib/x86_64-linux-gnu/libgcc_s.so.1
+if test -r $f; then
+	mkdir -p $tmp/lib/x86_64-linux-gnu
+	cp -L $f $tmp/lib/x86_64-linux-gnu
+else
+	log "Missing [$f]"
+fi
 
 test "$HAPROXY_TEST" = "yes" && cp -R $dir/test/* $tmp
 

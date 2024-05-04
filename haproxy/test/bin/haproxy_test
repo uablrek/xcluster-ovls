@@ -47,6 +47,25 @@ cmd_tcase_start_haproxy() {
 	done
 	haproxy -f $cfg > /var/log/haproxy.log 2>&1 &
 }
+##   tcase_sample [--count=20]
+##     Test access through haproxy and check access an load-balancing
+cmd_tcase_sample() {
+	tcase "Check access an load-balancing"
+	test -n "$__count" || __count=20
+	local i out=/tmp/samples
+	for i in $(seq 1 $__count); do
+		wget -q -O- http://192.168.2.201:8080/cgi-bin/info >> $out \
+			|| tdie "Access failed"
+	done
+	cat /tmp/samples | sort | uniq -c > $out.stats
+	cat $out.stats
+
+	local targets=$(cat $out.stats | wc -l)
+	tlog "Got answer from $targets targets"
+	test $targets -eq $__nvm || tdie "Expected $__nvm targets"
+	return 0
+}
+
 
 . /usr/lib/xctest
 indent='  '

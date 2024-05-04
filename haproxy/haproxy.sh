@@ -35,10 +35,12 @@ dbg() {
 cmd_env() {
 	test -n "$__haproxyd" || __haproxyd=$GOPATH/src/github.com/haproxy/haproxy
 	test -n "$__haproxyver" || __haproxyver=v2.8.0
+	test -n "$__nrouters" || __nrouters=1
+	test -n "$__nvm" || __nvm=4
 	if test "$cmd" = "env"; then
-		opt="haproxy.+"
+		opt="haproxy.+|nvm|nrouters"
 		set | grep -E "^(__($opt))="
-		return 0
+		exit 0
 	fi
 
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
@@ -48,7 +50,6 @@ cmd_env() {
 ##   clone [--haproxyd=] [--haproxyver=]
 ##     Clone the haproxy repo. --depth 1 is used
 cmd_clone() {
-	cmd_env
 	test -e "$__haproxyd" && die "Already exist [$__haproxyd]"
 	git clone --depth 1 -b $__haproxyver \
 		https://github.com/haproxy/haproxy.git $__haproxyd
@@ -56,7 +57,6 @@ cmd_clone() {
 ##   build
 ##     Build HAProxy
 cmd_build() {
-	cmd_env
 	test -d "$__haproxyd" || die "Not a directory [$__haproxyd]"
 	cd "$__haproxyd"
 	make -j$(nproc) TARGET=linux-glibc USE_OPENSSL=1
@@ -66,30 +66,37 @@ cmd_build() {
 ##   test [--xterm] [--no-stop] > $log   # default test
 ##     Exec tests
 cmd_test() {
-	cmd_env
-    start=starts
-    test "$__xterm" = "yes" && start=start
-    rm -f $XCLUSTER_TMP/cdrom.iso
+	start=starts
+	test "$__xterm" = "yes" && start=start
+	rm -f $XCLUSTER_TMP/cdrom.iso
 
-    if test -n "$1"; then
-		t=$1
+	local t=default
+	if test -n "$1"; then
+		local t=$1
 		shift
-        test_$t $@
-    else
-        test_start
-    fi      
+	fi		
 
-    now=$(date +%s)
-    tlog "Xcluster test ended. Total time $((now-begin)) sec"
+	if test -n "$__log"; then
+		mkdir -p $(dirname "$__log")
+		date > $__log || die "Can't write to log [$__log]"
+		test_$t $@ >> $__log
+	else
+		test_$t $@
+	fi
+
+	now=$(date +%s)
+	log "Xcluster test ended. Total time $((now-begin)) sec"
 }
-
+##   test default
+##     Test for CI
+test_default() {
+	test_sample
+}
 ##   test start_empty
 ##     Start cluster
 test_start_empty() {
 	export __image=$XCLUSTER_HOME/hd.img
-	echo "$XOVLS" | grep -q private-reg && unset XOVLS
-	test -n "$TOPOLOGY" && \
-		. $($XCLUSTER ovld network-topology)/$TOPOLOGY/Envsettings
+	unset XOVLS
 	export HAPROXY_TEST=yes
 	xcluster_start network-topology iptools . $@
 	otc 1 version
@@ -98,12 +105,22 @@ test_start_empty() {
 ##     Start cluster and setup
 test_start() {
 	__ntesters=1
-	__nrouters=1
 	test_start_empty $@
 	otcr start_haproxy
 }
+##   test [--count=20] sample
+##     Test access an load-balancing
+test_sample() {
+	test -n "$__count" || __count=20
+	test_start $@
+	otc 221 "sample --count=$__count"
+	xcluster_stop
+}
 
+
+test -n "$__nvm" || __nvm=X    # Prevent default setting
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
+test "$__nvm" = "X" && unset __nvm
 indent=''
 
 ##
@@ -128,6 +145,8 @@ long_opts=`set | grep '^__' | cut -d= -f1`
 
 # Execute command
 trap "die Interrupted" INT TERM
+cd $dir
+cmd_env
 cmd_$cmd "$@"
 status=$?
 rm -rf $tmp
