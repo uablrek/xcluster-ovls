@@ -16,7 +16,7 @@ findf() {
 	f=$ARCHIVE/$1
 	test -r $f && return
 	f=$HOME/Downloads/$1
-	test -r $1 || die "Can't find [$1]"
+	test -r $f
 }
 
 test -n "$1" || die "No out-file"
@@ -28,7 +28,7 @@ f=$GOPATH/src/github.com/Nordix/ctraffic/image/ctraffic
 if test -x $f; then
 	cp $f $tmp/bin
 else
-	findf ctraffic.gz
+	findf ctraffic.gz || die "Can't find [ctraffic.gz]"
 	gzip -cd $f > $tmp/bin/ctraffic || die "Failed to uncompress [$f]"
 	chmod a+x $tmp/bin/ctraffic
 fi
@@ -42,6 +42,8 @@ $XCLUSTER install_prog --dest=$tmp host ncat
 
 f=/tmp/$USER/sctpt/sctpt/sctpt
 test -x $f && $XCLUSTER install_prog --dest=$tmp $f 
+
+#$dir/k8s-test.sh build_testprog --dest=$tmp/bin > /dev/null
 
 cd $tmp
 tar cf "$1" *

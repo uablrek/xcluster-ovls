@@ -59,6 +59,7 @@ cmd_env() {
 		exit 0
 	fi
 
+	test -n "$long_opts" && export $long_opts
 	images=$($XCLUSTER ovld images)/images.sh
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
@@ -188,7 +189,7 @@ test_default() {
 	test_basic
 	test_mconnect
 	test_connectivity
-	#test "$xcluster_PROXY_MODE" = "ipvs" && __multiport=yes # flakey!
+	#test "$xcluster_PROXY_MODE" = "ipvs" && __multiport=yes # flaky!
 	case "$__cni" in
 		cilium) __count=40;;
 		antrea) __count=20;;
@@ -427,6 +428,15 @@ test_reroute() {
 	otc 201 "ctraffic_check --no-fail /tmp/ctraffic.out"
 	xcluster_stop
 }
+##   test evict
+##     Test that a POD that exceeds the ephemeral-storage gets evicted
+test_evict() {
+	__wait=yes
+	test_start_empty $@
+	otc 1 evict
+	xcluster_stop
+}
+
 
 test -z "$__nvm" && __nvm=X
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
@@ -442,18 +452,18 @@ shift
 grep -q "^cmd_$cmd()" $0 $hook || die "Invalid command [$cmd]"
 
 while echo "$1" | grep -q '^--'; do
-    if echo $1 | grep -q =; then
-	o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
-	v=$(echo "$1" | cut -d= -f2-)
-	eval "$o=\"$v\""
-    else
-	o=$(echo "$1" | sed -e 's,-,_,g')
-	eval "$o=yes"
-    fi
-    shift
+	if echo $1 | grep -q =; then
+		o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
+		v=$(echo "$1" | cut -d= -f2-)
+		eval "$o=\"$v\""
+	else
+		o=$(echo "$1" | sed -e 's,-,_,g')
+		eval "$o=yes"
+	fi
+	long_opts="$long_opts $o"
+	shift
 done
 unset o v
-long_opts=`set | grep '^__' | cut -d= -f1`
 
 # Execute command
 trap "die Interrupted" INT TERM

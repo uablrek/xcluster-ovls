@@ -494,6 +494,25 @@ cmd_tcase_conntrack_size() {
 	tcase "Set conntrack size to $s"
 	echo $s > /proc/sys/net/nf_conntrack_max
 }
+##   tcase_evict
+##     Test that a POD that exceeds the ephemeral-storage gets evicted
+cmd_tcase_evict() {
+	tcase "POD that exceeds the ephemeral-storage gets evicted"
+	local pod=test-pod-evicted
+	kubectl create -f $yamld/$pod.yaml
+	local begin=$(date +%s)
+	sleep 5
+	pushv 120
+	tex "check_not_ready $pod" || tdie "Still ready [$pod]"
+	local now=$(date +%s)
+	tlog "Not-ready after $((now-begin)) sec"
+	return 0
+}
+check_not_ready() {
+	local stat=.status.containerStatuses[0]
+	$kubectl get pod $1 -o json | jq $stat.ready  # log something
+	$kubectl get pod $1 -o json | jq $stat.ready | grep -q false
+}
 ##   tcase_svc <svc> [vip]
 ##     Create a service and set the loadBalancerIP's (optional)
 cmd_tcase_svc() {
@@ -556,7 +575,6 @@ while echo "$1" | grep -q '^--'; do
 	shift
 done
 unset o v
-long_opts=`set | grep '^__' | cut -d= -f1`
 
 # Execute command
 trap "die Interrupted" INT TERM

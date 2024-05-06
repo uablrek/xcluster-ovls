@@ -11,3 +11,5 @@ spec:
   ports:
   - port: 5001
     name: mconnect
+  - port: 23
+    name: telnet
