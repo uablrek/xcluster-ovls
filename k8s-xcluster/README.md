@@ -5,28 +5,18 @@ used for advanced network testing with Kubernetes.
 
 **Xcluster is not a Kubernetes test tool!**
 
-It is primarily a *networking test tool* that can be used with
+It is primarily a **networking** test tool that can be used with
 Kubernetes. For K8s development in general, there are far more
 suitable environments like [KinD](https://kind.sigs.k8s.io/).
 
 Xcluster makes it possible to test network features in virtual
 environment that most other environments doesn't support, like:
 
-* Easy switch between different CNI-plugins
+* Easy switch between different CNI-plugins or kube-proxy modes
 * K8s HA setup
 * SR-IOV without a supporting HW NIC (requires qemu 8)
 * Different network topologies
 * Test any kernel setup, e.g. kernel versions, config or eBPF
-
-Below some features of `xcluster` are described, and then some practical
-examples of network testing in K8s.
-
-
-## Xcluster
-
-An `xcluster` consists of `qemu` VMs sharing a base disk image. The
-VMs get different roles, e.g. cluster nodes or routers, depending on
-the host name.
 
 ### It's fast and lightweight
 
@@ -34,16 +24,44 @@ A 40-node K8s cluster started in less than 10s:
 
 <img src="xcluster40.svg" width="50%" />
 
-The PC has an Intel i9 CPU, and 64G RAM. A reason for the fast start
-is that no container images are loaded. The Kubernetes servers are
-pre-loaded on the image, and are started from scripts.
+A reason for the fast start is that no container images are
+loaded. All files are pre-loaded on the image, and K8s is started from
+scripts. (the PC is an Intel i9 with 64G RAM)
 
+### You always restart xcluster
+
+An `xcluster` is never left running and re-used for several tests. A
+test usually look like:
+
+1. Start xcluster with appropriate [overlays](#overlays)
+2. Execute tests
+3. Terminate xcluster
+
+Some advantages of this approach are:
+
+* There is never any lingering stale state that causes problems
+* It's simple to alter the test setup, e.g. with different kernels,
+  different CNI-plugins, different K8s versions, etc
+* The overlay with the test is preserved (and hopefully documented),
+  and can be re-used years later. IMO this "preservability" property
+  is one of the most important
+
+An example that uses the `xcluster` [test framework](
+https://github.com/Nordix/xcluster/tree/master/ovl/test):
+
+<img src="simple-test.svg" width="50%" />
+
+A simple connectivity test is performed with:
+
+* Proxy-mode=nftables and cni-plugin calico
+* Default proxy-mode (ipvs) and cni-plugin flannel, but with kernel 5.10.215
+
+You might notice that the start of this 4-node cluster took longer
+time than the 40-node cluster in the example above? This is because
+the cni-plugins must be loaded and started.
 
 
 ### Installation
-
-The demo above was intended to catch your interrest. Here comes an
-instruction howto run it on your own PC (Ubuntu Linux assumed).
 
 First check the [dependencies](
 https://github.com/Nordix/xcluster#execution-environment-and-dependencies),
