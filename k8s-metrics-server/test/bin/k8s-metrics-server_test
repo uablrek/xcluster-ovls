@@ -110,7 +110,21 @@ cmd_tcase_metrics_server() {
 	kubectl="kubectl -n kube-system"
 	test_deployment metrics-server 120
 }
-
+##   tcase_top [--ns=namespace] [nodes]
+##     Check that "kubectl top" works
+cmd_tcase_top() {
+	tcase 'Check that "kubectl top" works'
+	test -n "$__ns" && kubectl="kubectl -n $__ns"
+	pushv 120
+	tex top $@
+}
+top() {
+	if test "$1" = "nodes"; then
+		kubectl top nodes 2>&1
+	else
+		$kubectl top pods 2>&1
+	fi
+}
 
 . /usr/lib/xctest
 indent='  '

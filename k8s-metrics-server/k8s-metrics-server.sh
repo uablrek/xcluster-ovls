@@ -108,9 +108,10 @@ test_start() {
 	otc 1 "deployment --replicas=$__replicas tserver"
 }
 ##   test default
-##     Just test that the metrics-server starts
+##     Start the metrics-server and check "kubectl top pods"
 test_default() {
-	test_start_empty
+	test_start_empty $@
+	otc 1 "top --ns=kube-system"
 	xcluster_stop
 }
 
