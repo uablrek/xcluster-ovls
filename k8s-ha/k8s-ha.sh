@@ -192,7 +192,7 @@ test_default() {
 	local t
 	for t in etcd_vm_reboot master_reboot lb_reboot etcd_k8s_reboot; do
 		tlog "=========== $t"
-		$me test $t || tdie $t
+		$me test $t $@ || tdie $t
 	done
 }
 ##   test start_empty [--cni=bridge]

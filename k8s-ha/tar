@@ -25,7 +25,10 @@ cp -R $dir/default/* $tmp
 $XCLUSTER install_prog --dest=$tmp envsubst
 
 if $dir/k8s-ha.sh keepalived --install=$tmp/bin; then
+	log "Including keepalived"
 	$XCLUSTER cplib --dest=$tmp $tmp/bin/keepalived
+else
+	log "Keepalived NOT INCLUDED!"
 fi
 
 cd $tmp
