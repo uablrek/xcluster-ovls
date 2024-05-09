@@ -10,12 +10,13 @@ Kubernetes. For K8s development in general, there are far more
 suitable environments like [KinD](https://kind.sigs.k8s.io/).
 
 Xcluster makes it possible to test network features in virtual
-environment that most other environments doesn't support, like:
+environment that other environments doesn't support, like:
 
 * Easy switch between different CNI-plugins or kube-proxy modes
-* K8s HA setup
+* [K8s HA setup](https://github.com/uablrek/xcluster-ovls/tree/main/k8s-ha)
 * SR-IOV without a supporting HW NIC (requires qemu 8)
-* Different network topologies
+* [Different network topologies](
+  https://github.com/Nordix/xcluster/blob/master/ovl/network-topology/README.md)
 * Test any kernel setup, e.g. kernel versions, config or eBPF
 
 ### It's fast and lightweight
@@ -63,18 +64,26 @@ the cni-plugins must be loaded and started.
 
 ### Installation
 
-First check the [dependencies](
+The images can't be maintained on `Nordix` at the moment, so download
+from:
+
+* [xcluster.tar.xz](
+  https://drive.google.com/file/d/1-2OTYGUxkAobs0Ouup3b7h13apu_CONs/view?usp=drive_link)
+* [hd-k8s.img.xz](
+  https://drive.google.com/file/d/1tGta6gr-bLtyVmfBSpaw41lESummvHDG/view?usp=drive_link)
+
+Check the [dependencies](
 https://github.com/Nordix/xcluster#execution-environment-and-dependencies),
-then start without K8s:
+then:
 
 ```
-xcver=8.0.0
 cd /your/experiment/dir
-curl -L https://github.com/Nordix/xcluster/releases/download/$xcver/xcluster-$xcver.tar.xz | tar -Jx
+tar xf $HOME/Downloads/xcluster.tar.xz
 cd xcluster
 . ./Envsettings
-xc mkcdrom xnet
-xc start     # 6 xterm consoles should pop up
+xc mkcdrom xnet iptools
+xterm        # Optional. Just test that "xterm" works
+xc start     # 6 xterm consoles (xterm) should pop up
 xc stop
 ```
 
@@ -85,14 +94,13 @@ if needed.
 Add k8s (continuation from above):
 ```
 . ./Envsettings.k8s
-# The printouts say that you have no k8s image. Load one:
-armurl=http://artifactory.nordix.org/artifactory/cloud-native
-curl -L $armurl/xcluster/images/hd-k8s-v1.28.2.img.xz | xz -d > $__image
+# The printouts say that you have no k8s image. Load it:
+xz $HOME/Downloads/hd-k8s.img.xz -cd -T0 > $__image
 xc mkcdrom   # clear ovl's
 xc start     # 6 xterm consoles should pop up, but now with K8s
-# $KUBECONFIG is set for you, but you must install "kubectl" yourself
-# (or do this in any xcluster xterm)
-kubectl get nodes
+# $KUBECONFIG is set for you. You can install "kubectl" yourself,
+# or use:
+./workspace/bin/kubectl get nodes
 xc stop
 ```
 
@@ -104,13 +112,16 @@ namespace](https://github.com/Nordix/xcluster/blob/master/doc/netns.md).
 Once the netns is created, enter it and test:
 
 ```
+#xc nsadd_docker 1
 xc nsenter 1
 cd
 . .bashrc
 cd /your/experiment/dir/xcluster
 . ./Envsettings.k8s    # (a coredns should start)
-cdo test-template
-./test-template.sh test --nvm=40 start_empty > /dev/null
+cdo template-k8s
+export __log=/tmp/$USER/xcluster.log
+./template-k8s.sh test --nvm=40 start_empty
+vm 22                # Terminal on vm-022
 kubectl get nodes
 xc stop
 ```
@@ -177,19 +188,19 @@ To make network tests with K8s you need:
 
 Run the basic test:
 ```
-log=/tmp/xcluster.log   # (assumed to be set from now on)
+export __log=/tmp/$USER/xcluster.log   # (assumed to be set from now on)
 export XOVLS=private-reg
 images lreg_preload kubernetes mconnect
-cdo test-template
-./test-template.sh test basic > $log
+cdo template-k8s
+./template-k8s.sh test default
 ```
 
 ### Use another CNI-plugin
 
 ```
 images lreg_preload k8s-cni-calico
-cdo test-template
-./test-template.sh test basic k8s-cni-calico > /dev/null
+cdo template-k8s
+./template-k8s.sh test --cni=calico
 ```
 
 The local registry must be pre-loaded with the necessary images, then
