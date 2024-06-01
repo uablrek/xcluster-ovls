@@ -500,11 +500,13 @@ cmd_tcase_evict() {
 	tcase "POD that exceeds the ephemeral-storage gets evicted"
 	local pod=test-pod-evicted
 	kubectl create -f $yamld/$pod.yaml
-	local begin=$(date +%s)
-	sleep 5
+	local now begin=$(date +%s)
+	tex "check_ready $pod" || tdie "Never becomes ready [$pod]"
+	now=$(date +%s)
+	tlog "Ready after $((now-begin)) sec"
 	pushv 120
 	tex "check_not_ready $pod" || tdie "Still ready [$pod]"
-	local now=$(date +%s)
+	now=$(date +%s)
 	tlog "Not-ready after $((now-begin)) sec"
 	return 0
 }
@@ -512,6 +514,11 @@ check_not_ready() {
 	local stat=.status.containerStatuses[0]
 	$kubectl get pod $1 -o json | jq $stat.ready  # log something
 	$kubectl get pod $1 -o json | jq $stat.ready | grep -q false
+}
+check_ready() {
+	local stat=.status.containerStatuses[0]
+	$kubectl get pod $1 -o json | jq $stat.ready  # log something
+	$kubectl get pod $1 -o json | jq $stat.ready | grep -q true
 }
 ##   tcase_svc <svc> [vip]
 ##     Create a service and set the loadBalancerIP's (optional)

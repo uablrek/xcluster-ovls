@@ -139,6 +139,9 @@ test_start_empty() {
 		for n in $(seq $FIRST_WORKER $__nvm); do
 			eval export __append$n="hugepages=128"
 		done
+		# Add 128x2 MB to compensate for huge-pages
+		export __mem=$((__mem + 256))
+		export __mem1=$((__mem1 + 256))
 	fi
 	local cni
 	if test -n "$__cni"; then
@@ -151,11 +154,12 @@ test_start_empty() {
 		export __mem1=$((__mem1 + 1024))
 		test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=disabled
 	fi
-	if echo $@ $cni | grep -q calico; then
+	if echo $@ $cni | grep -qE "calico|antrea"; then
 		__cni=calico
 		export __mem=$((__mem + 512))
 		export __mem1=$((__mem1 + 512))
 	fi
+	tlog "mem=$__mem, mem1=$__mem1"
 	xcluster_start network-topology . $cni $@
 	test "$__hugep" = "yes" && otcwp mount_hugep
 	otc 1 check_namespaces
