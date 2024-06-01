@@ -108,6 +108,7 @@ cmd_keepalived() {
 			cp $x $__install
 		else
 			log "Keepalived not built"
+			return 1
 		fi
 		return 0
 	fi
