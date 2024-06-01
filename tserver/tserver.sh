@@ -70,6 +70,15 @@ cmd_mkimage() {
 	local imagesd=$($XCLUSTER ovld images)
 	$imagesd/images.sh mkimage --force --upload=$__upload --tag=$__tag $dir/image
 }
+##   build_sctpt
+##     Build the "sctpt" test program in $HOME/bin
+cmd_build_sctpt() {
+	local d=$GOPATH/src/github.com/Nordix/xcluster/ovl/sctp/src
+	test -r $d/Makefile || die "Not readable [$d/Makefile]"
+	mkdir -p $HOME/bin
+	make -j$(nproc) -C $d X=$HOME/bin/sctpt static || die make
+	strip $HOME/bin/sctpt
+}
 ##   install_servers <dst>
 ##     Install mconnect, ctraffic, kahttp servers. The sctpt setver is
 ##     installed if it's in the path
