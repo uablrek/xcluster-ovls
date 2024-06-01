@@ -47,7 +47,7 @@ cmd_env() {
 	
 	if test "$cmd" = "env"; then
 		set | grep -E '^(__.*)='
-		return 0
+		exit 0
 	fi
 
 	if echo "$xcluster_PROXY_MODE" | grep -q nftables; then
@@ -115,18 +115,18 @@ cmd_install_servers() {
 ##   test [--xterm] [--no-stop] [test] [ovls...] > logfile
 ##     Exec tests
 cmd_test() {
-	cmd_env
 	start=starts
 	test "$__xterm" = "yes" && start=start
 	rm -f $XCLUSTER_TMP/cdrom.iso
 
-	local t=connectivity
+	local t=default
 	if test -n "$1"; then
 		local t=$1
 		shift
 	fi		
 
 	if test -n "$__log"; then
+		mkdir -p $(dirname "$__log")
 		date > $__log || die "Can't write to log [$__log]"
 		test_$t $@ >> $__log
 	else
@@ -134,7 +134,13 @@ cmd_test() {
 	fi
 
 	now=$(date +%s)
-	tlog "Xcluster test ended. Total time $((now-begin)) sec"
+	log "Xcluster test ended. Total time $((now-begin)) sec"
+}
+##   test default
+##     Combo test for CI
+test_default() {
+	$me test connectivity $@
+	$me test lb_sourceranges $@
 }
 ##   test [--cni=] start_empty
 ##     Start empty cluster
