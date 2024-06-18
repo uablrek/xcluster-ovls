@@ -1,0 +1,15 @@
+#! /bin/sh
+# system one time tasks
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+
+/etc/init.d/rcS
+
+touch /etc/runit/stopit
+chmod 0 /etc/runit/stopit
+
+# Replace the `poweroff` and `reboot` BusyBox utilities and remove /etc/inittab
+rm -f /sbin/reboot /sbin/poweroff /etc/inittab
+echo "#! /runit-init 0" > /sbin/poweroff
+echo "#! /runit-init 6" > /sbin/reboot
+chmod a+x /sbin/reboot /sbin/poweroff

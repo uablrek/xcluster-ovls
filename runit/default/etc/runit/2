@@ -1,0 +1,5 @@
+#! /bin/sh
+mkdir -p /service
+ln -s /etc/sv/console-terminal /service
+runsvdir -P /service
+
