@@ -152,7 +152,7 @@ test_start_empty() {
 		__cni=cilium
 		export __mem=$((__mem + 1024))
 		export __mem1=$((__mem1 + 1024))
-		test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=disabled
+		export xcluster_PROXY_MODE=disabled
 	fi
 	if echo $@ $cni | grep -qE "calico|antrea"; then
 		__cni=calico

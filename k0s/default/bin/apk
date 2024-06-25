@@ -1,0 +1,4 @@
+#! /bin/sh
+# A fake "apk" to make k0sctl think we are an Alpine Linux system
+log=/var/log/apk
+echo $@ >> $log

@@ -75,6 +75,8 @@ cmd_mkimage() {
 cmd_build_sctpt() {
 	local d=$GOPATH/src/github.com/Nordix/xcluster/ovl/sctp/src
 	test -r $d/Makefile || die "Not readable [$d/Makefile]"
+	test -n "$NFQLB_DIR" || NFQLB_DIR=$HOME/tmp/nfqlb
+	test -d $NFQLB_DIR || die "Nfqlb not installed at [$NFQLB_DIR]"
 	mkdir -p $HOME/bin
 	make -j$(nproc) -C $d X=$HOME/bin/sctpt static || die make
 	strip $HOME/bin/sctpt

@@ -1,0 +1,118 @@
+#! /bin/sh
+##
+## k0s_test --
+##
+##   Test script for k0s executed in xcluster.
+##
+## Commands;
+##
+
+prg=$(basename $0)
+dir=$(dirname $0); dir=$(readlink -f $dir)
+me=$dir/$prg
+tmp=/tmp/${prg}_$$
+. /etc/profile
+
+die() {
+	echo "ERROR: $*" >&2
+	rm -rf $tmp
+	exit 1
+}
+help() {
+	grep '^##' $0 | cut -c3-
+	rm -rf $tmp
+	exit 0
+}
+test -n "$1" || help
+echo "$1" | grep -qi "^help\|-h" && help
+
+log() {
+	echo "$prg: $*" >&2
+}
+dbg() {
+	test -n "$__verbose" && echo "$prg: $*" >&2
+}
+
+##   tcase_version
+##     Log versions
+cmd_tcase_version() {
+	log_version
+}
+##   tcase_del_default
+##     Delete the default route
+cmd_tcase_del_default() {
+	tcase "Delete the default route"
+	ip ro del default
+	ip -6 ro del default > /dev/null 2>&1
+	return 0
+}
+##   tcase_k0s_prep
+##     Prepare k0s, e.g. create k0s links (from /root/www)
+cmd_tcase_k0s_prep() {
+	tcase "Prepare k0s ($__k0sver)"
+	ln /root/www/k0s-$__k0sver-amd64 /bin/k0s
+	test -n "$K0S_DATA_DIR" || K0S_DATA_DIR=/var/lib/k0s
+	mkdir -p $K0S_DATA_DIR/images
+	ln /root/www/k0s-airgap-bundle-$__k0sver-amd64 $K0S_DATA_DIR/images
+	echo 'alias k="k0s kubectl"' >> /etc/profile
+}
+##   tcase_start_single
+##     Install and start a k0s single-node cluster
+cmd_tcase_start_single() {
+	tcase "Install single-node cluster ($__k0sver)"
+	k0s install controller --single
+	mv /etc/init.d/k0scontroller /etc/init.d/50k0scontroller.rc
+	/etc/init.d/50k0scontroller.rc start
+}
+##   tcase_start_k0sctl
+##     Install and start a k0s cluster with k0sctl
+cmd_tcase_start_k0sctl() {
+	tcase "Install cluster with k0sctl ($__k0sver)"
+	export __k0sver
+	k0sctl apply --disable-telemetry -c /root/k0sctl.yaml || die "k0sctl apply"
+}
+
+##   tcase_check_k8s
+##     Check K8s nodes, namespaces, daemonsets and deployments
+cmd_tcase_check_k8s() {
+	tcase "Check K8s"
+	kubectl="k0s kubectl"
+	test_namespaces
+	test_nodes
+	kubectl="k0s kubectl -n kube-system"
+	pushv 120
+	test_daemonset kube-proxy
+	test_daemonset kube-router
+	test_deployment coredns
+	test_deployment metrics-server
+}
+
+. /usr/lib/xctest
+indent='  '
+
+##
+# Get the command
+cmd=$1
+shift
+grep -q "^cmd_$cmd()" $0 || die "Invalid command [$cmd]"
+
+while echo "$1" | grep -q '^--'; do
+	if echo $1 | grep -q =; then
+		o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
+		v=$(echo "$1" | cut -d= -f2-)
+		eval "$o=\"$v\""
+	else
+		o=$(echo "$1" | sed -e 's,-,_,g')
+		eval "$o=yes"
+	fi
+	shift
+done
+unset o v
+long_opts=`set | grep '^__' | cut -d= -f1`
+
+# Execute command
+trap "die Interrupted" INT TERM
+cmd_$cmd "$@"
+status=$?
+rm -rf $tmp
+exit $status

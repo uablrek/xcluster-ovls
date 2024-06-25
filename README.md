@@ -13,6 +13,7 @@ export XCLUSTER_OVLPATH="$XCLUSTER_OVLPATH:$GOPATH/src/github.com/uablrek/xclust
 
  * [alpine](./alpine/README.md) -  A image based on [Alpine Linux](https://www.alpinelinux.org/) with several useful additions. The image is intended as a base for other images, or test/debugging. 
  * [haproxy](./haproxy/README.md) -  Build and test [HAProxy](https://github.com/haproxy/haproxy/tree/master) 
+ * [k0s](./k0s/README.md) -  The [K0s](https://k0sproject.io/) Kubernetes installed on `xcluster` 
  * [k8s-e2e](./k8s-e2e/README.md) -  Run Kubernetes e2e tests in xcluster 
  * [k8s-gateway-api](./k8s-gateway-api/README.md) -  The [K8s Gateway API](https://gateway-api.sigs.k8s.io/) on xcluster ([github](https://github.com/kubernetes-sigs/gateway-api)) 
  * [k8s-ha](./k8s-ha/README.md) -  Setup Kubernetes for High Availability (HA). This basically means to have a redundant control plane nodes behind a load balancer 

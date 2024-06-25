@@ -1,0 +1,43 @@
+#! /bin/sh
+# NOTE: A common pattern is to specify "-" (stdout) as out-file,
+#  so there must be NO log printouts to stdout!
+
+dir=$(dirname $0); dir=$(readlink -f $dir)
+tmp=/tmp/$USER/xcluster_$$
+die() {
+	echo "ERROR: $*" >&2
+	rm -rf $tmp
+	exit 1
+}
+log() {
+	echo "INFO: $*" >&2
+}
+test -n "$1" || die "No out-file"
+
+sh=$dir/k0s.sh
+$sh bin > /dev/null || exit 1
+$sh bin --airgap > /dev/null || exit 1
+$sh bin --k0sctl > /dev/null || exit 1
+
+mkdir -p $tmp/bin
+cp -R $dir/default/* $tmp
+$sh k0sctl_hosts >> $tmp/root/k0sctl.yaml
+cp $($sh bin --k0sctl) $tmp/bin/k0sctl
+mkdir -p $tmp/root/www
+cp $($sh bin) $tmp/root/www
+cp $($sh bin --airgap) $tmp/root/www
+
+mkdir -p $tmp/etc/ssl/certs
+cp /etc/ssl/certs/ca-certificates.crt $tmp/etc/ssl/certs
+
+mkdir -p $tmp/root/.ssh
+$sh ssh_keys --dest=$tmp/root/.ssh
+cp $HOME/.ssh/id_dropbear.pub $tmp/root/.ssh/authorized_keys
+
+d=$XCLUSTER_WORKSPACE/dropbear-2024.85
+cp $d/dropbearkey $d/dropbearconvert $tmp/bin
+
+cd $tmp
+tar cf "$1" *
+cd - > /dev/null
+rm -rf $tmp

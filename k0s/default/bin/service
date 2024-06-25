@@ -1,0 +1,85 @@
+#! /bin/sh
+##
+## service -- A fake system V "service" program
+##
+## Syntax:
+##
+##   service SCRIPT COMMAND [OPTIONS]
+##   service --status-all
+##   service --help | -h | --version
+##
+## Commands;
+##
+
+prg=$(basename $0)
+dir=$(dirname $0); dir=$(readlink -f $dir)
+tmp=/tmp/${prg}_$$
+
+die() {
+    echo "ERROR: $*" >&2
+    rm -rf $tmp
+    exit 1
+}
+help() {
+    grep '^##' $0 | cut -c3-
+    rm -rf $tmp
+    exit 0
+}
+test -n "$1" || help
+echo "$1" | grep -qi "^help\|-h\|version" && help
+
+log() {
+	echo "$*" >&2
+}
+
+##   start
+cmd_start() {
+	exec $script start
+}
+##   stop
+cmd_stop() {
+	exec $script stop
+}
+##   status
+cmd_status() {
+	if $script status | grep -q Running; then
+		echo "status: started"
+	else
+		echo "status: stopped"
+	fi
+}
+
+##
+# Get the script
+script=/etc/init.d/$1
+test -x $script || die "Not executable [$script]"
+shift
+test -n "$1" || die "No command"
+# Get the command
+cmd=$1
+shift
+grep -q "^cmd_$cmd()" $0 $hook || die "Invalid command [$cmd]"
+
+while echo "$1" | grep -q '^--'; do
+	if echo $1 | grep -q =; then
+		o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
+		v=$(echo "$1" | cut -d= -f2-)
+		eval "$o=\"$v\""
+	else
+		if test "$1" = "--"; then
+			shift
+			break
+		fi
+		o=$(echo "$1" | sed -e 's,-,_,g')
+		eval "$o=yes"
+	fi
+	shift
+done
+unset o v
+
+# Execute command
+trap "die Interrupted" INT TERM
+cmd_$cmd "$@"
+status=$?
+rm -rf $tmp
+exit $status

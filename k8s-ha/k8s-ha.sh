@@ -263,7 +263,7 @@ test_etcd_vm_reboot() {
 	export __nrouters=0
 	export xcluster_K8S_DISABLE=yes
 	unset xcluster_LB_VMS
-	test_start_empty
+	test_start_empty $@
 	otc 195 "etcd_health $etcd_size"
 	tcase "Stop vm-193"
 	cmd_stop_vm 193
@@ -284,7 +284,7 @@ test_etcd_vm_reboot() {
 test_etcd_k8s_reboot() {
 	export xcluster_MASTERS="vm-001,vm-002"
 	test -n "$__nvm" || __nvm=4
-	test_start
+	test_start $@
 	local vm n
 	for n in $xcluster_ETCD_VMS; do
 		otc $__nvm check_api
@@ -305,7 +305,7 @@ test_etcd_k8s_reboot() {
 test_master_reboot() {
 	export xcluster_MASTERS="vm-001,vm-002"
 	test -n "$__nvm" || __nvm=4
-	test_start
+	test_start $@
 	otc 4 check_api
 	tcase "Stop vm-001"
 	cmd_stop_vm 1
@@ -332,7 +332,7 @@ test_lb_reboot() {
 	export xcluster_LB_VMS="191 192"
 	
 	test -n "$__nvm" || __nvm=4
-	test_start
+	test_start $@
 	otc 4 check_api
 	tcase "Stop vm-191"
 	cmd_stop_vm 191
