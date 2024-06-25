@@ -47,7 +47,7 @@ To test this automatically do:
 ```
 ./k0s.sh test start
 # On vm-001
-export __k0sver
+export __k0sver PREFIX
 k0sctl apply --disable-telemetry -c k0sctl.yaml
 ```
 

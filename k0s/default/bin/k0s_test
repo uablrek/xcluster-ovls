@@ -55,6 +55,9 @@ cmd_tcase_k0s_prep() {
 	mkdir -p $K0S_DATA_DIR/images
 	ln /root/www/k0s-airgap-bundle-$__k0sver-amd64 $K0S_DATA_DIR/images
 	echo 'alias k="k0s kubectl"' >> /etc/profile
+	echo 'export DISABLE_TELEMETRY=true' >> /etc/profile
+	echo 'export KUBECONFIG' >> /etc/profile
+	mkdir -p /etc/kubernetes
 }
 ##   tcase_start_single
 ##     Install and start a k0s single-node cluster
@@ -68,23 +71,61 @@ cmd_tcase_start_single() {
 ##     Install and start a k0s cluster with k0sctl
 cmd_tcase_start_k0sctl() {
 	tcase "Install cluster with k0sctl ($__k0sver)"
-	export __k0sver
-	k0sctl apply --disable-telemetry -c /root/k0sctl.yaml || die "k0sctl apply"
+	local cfg=/root/k0sctl.yaml
+	test -n "$1" && cfg=$1
+	export __k0sver PREFIX
+	export DISABLE_TELEMETRY=true
+	k0sctl apply -c $cfg || die "k0sctl apply"
+	k0sctl kubeconfig --config $cfg > $KUBECONFIG
 }
-
 ##   tcase_check_k8s
 ##     Check K8s nodes, namespaces, daemonsets and deployments
 cmd_tcase_check_k8s() {
 	tcase "Check K8s"
+	# (for --single we have no KUBECONFIG)
+	unset KUBECONFIG
 	kubectl="k0s kubectl"
 	test_namespaces
 	test_nodes
 	kubectl="k0s kubectl -n kube-system"
 	pushv 120
 	test_daemonset kube-proxy
-	test_daemonset kube-router
+	if echo $CNI_INFO | grep -q kuberouter; then
+		test_daemonset kube-router
+	else
+		test_deployment calico-kube-controllers
+		test_daemonset calico-node
+	fi
+	test $__nvm -gt 1 && test_daemonset konnectivity-agent
 	test_deployment coredns
 	test_deployment metrics-server
+}
+##   tcase_private_reg
+##     Use the private registry
+cmd_tcase_private_reg() {
+	tcase "Use the private registry"
+	test -r /etc/spoofed-hosts || die "ovl/private-reg not loaded"
+	mkdir -p /etc/k0s/containerd.d
+	local r cfg=/etc/k0s/containerd.d/private-reg.toml
+	cat >> $cfg <<EOF
+[plugins."io.containerd.grpc.v1.cri".registry]
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+EOF
+	for r in $(cat /etc/spoofed-hosts | cut -d' ' -f2); do
+		cat >> $cfg <<EOF
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."$r"]
+      endpoint = ["http://$r"]
+EOF
+	done	
+	cat >> $cfg <<EOF
+  [plugins."io.containerd.grpc.v1.cri".registry.configs]
+EOF
+	for r in $(cat /etc/spoofed-hosts | cut -d' ' -f2); do
+		cat >> $cfg <<EOF
+    [plugins."io.containerd.grpc.v1.cri".registry.configs."$r".tls]
+      insecure_skip_verify = true
+EOF
+	done	
 }
 
 . /usr/lib/xctest

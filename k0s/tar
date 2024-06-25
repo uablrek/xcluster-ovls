@@ -13,6 +13,7 @@ log() {
 	echo "INFO: $*" >&2
 }
 test -n "$1" || die "No out-file"
+eval $($XCLUSTER env)
 
 sh=$dir/k0s.sh
 $sh bin > /dev/null || exit 1
@@ -22,6 +23,7 @@ $sh bin --k0sctl > /dev/null || exit 1
 mkdir -p $tmp/bin
 cp -R $dir/default/* $tmp
 $sh k0sctl_hosts >> $tmp/root/k0sctl.yaml
+$sh k0sctl_hosts >> $tmp/root/k0sctl-k0s.yaml
 cp $($sh bin --k0sctl) $tmp/bin/k0sctl
 mkdir -p $tmp/root/www
 cp $($sh bin) $tmp/root/www
@@ -34,8 +36,10 @@ mkdir -p $tmp/root/.ssh
 $sh ssh_keys --dest=$tmp/root/.ssh
 cp $HOME/.ssh/id_dropbear.pub $tmp/root/.ssh/authorized_keys
 
-d=$XCLUSTER_WORKSPACE/dropbear-2024.85
+d=$XCLUSTER_WORKSPACE/dropbear-$__dropbearver
 cp $d/dropbearkey $d/dropbearconvert $tmp/bin
+
+$XCLUSTER install_prog --dest=$tmp assign-lb-ip kubectl
 
 cd $tmp
 tar cf "$1" *

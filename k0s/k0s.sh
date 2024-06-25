@@ -44,10 +44,11 @@ cmd_env() {
 		PREFIX=fd00: \
 		__nvm=4 \
 		__nrouters=1 \
-		__k0sver=v1.30.2+k0s.0
+		__k0sver=v1.30.2+k0s.0 \
+		__replicas=4
 	export xcluster_PREFIX=$PREFIX
 	export xcluster_DOMAIN=cluster.local
-
+	export xcluster_KUBECONFIG=/etc/kubernetes/kubeconfig.k0s
 	if test "$cmd" = "env"; then
 		local xenv="DOMAIN"
 		set | grep -E "^($opts|xcluster_($xenv))="
@@ -83,7 +84,6 @@ cmd_ssh_keys() {
 	$d/dropbearconvert dropbear openssh id_dropbear id_dropbear_ssh \
 		> /dev/null 2>&1 || die dropbearconvert
 }
-
 ##   bin [--k0sctl|--airgap]
 ##     Print the path to the bin, or die trying
 cmd_bin() {
@@ -164,9 +164,11 @@ cmd_test() {
 ##   test default
 ##     Execute the default test-suite. Intended for CI
 test_default() {
+	unset __no_stop
 	test -n "$long_opts" && export $long_opts
 	$me test single $@ || die "single"
 	$me test k0sctl $@ || die "k0sctl"
+	$me test tserver $@ || die "tserver"
 }
 ##   test start_empty
 ##     Start cluster
@@ -185,6 +187,17 @@ test_start() {
 	test_start_empty $@
 	otcr del_default
 	otcwp k0s_prep
+}
+##   test start_k8s
+##     Start cluster prepare k0s, setup private_reg and Calico (dual-stack)
+test_start_k8s() {
+	export xcluster_CNI_INFO="k0s-calico"
+	test_start_empty private-reg $@
+	otcr del_default
+	otcwp k0s_prep
+	otcwp private_reg
+	otc 1 "start_k0sctl /root/k0sctl-k0s.yaml"
+	otc 1 check_k8s
 }
 ##   test single
 ##     Airgap install single-node on vm-001
@@ -207,6 +220,19 @@ test_k0sctl() {
 	otc 1 check_k8s
 	xcluster_stop
 }
+##   test [--replicas=4] tserver
+##     Perform basic tests with ovl/tserver
+test_tserver() {
+	test_start_k8s tserver
+	otcprog=tserver_test
+	otcr vip_routes
+	otc 1 "deployment --replicas=$__replicas --nodes=$__nodes tserver"
+	otc 1 create_svc
+	otc 201 "traffic --replicas=$__replicas 10.0.0.52"
+	unset otcprog
+	xcluster_stop
+}
+
 
 test -z "$__nvm" && __nvm=X
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
