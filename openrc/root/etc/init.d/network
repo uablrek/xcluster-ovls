@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+
+depend() {
+	provide net
+}
+
+start() {
+	return 0
+}
+stop() {
+	return 0
+}
+status() {
+	return 0
+}
