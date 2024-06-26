@@ -16,6 +16,7 @@ test -n "$1" || die "No out-file"
 eval $($XCLUSTER env)
 
 sh=$dir/k0s.sh
+eval $($sh env)
 $sh bin > /dev/null || exit 1
 $sh bin --airgap > /dev/null || exit 1
 $sh bin --k0sctl > /dev/null || exit 1
@@ -28,6 +29,14 @@ cp $($sh bin --k0sctl) $tmp/bin/k0sctl
 mkdir -p $tmp/root/www
 cp $($sh bin) $tmp/root/www
 cp $($sh bin --airgap) $tmp/root/www
+
+if test -n "$__k0sver_next"; then
+	log "Prepare upgrade to [$__k0sver_next]"
+	$sh bin --k0sver=$__k0sver_next > /dev/null || exit 1
+	$sh bin --k0sver=$__k0sver_next --airgap > /dev/null || exit 1
+	cp $($sh bin --k0sver=$__k0sver_next) $tmp/root/www
+	cp $($sh bin --k0sver=$__k0sver_next --airgap) $tmp/root/www
+fi
 
 mkdir -p $tmp/etc/ssl/certs
 cp /etc/ssl/certs/ca-certificates.crt $tmp/etc/ssl/certs

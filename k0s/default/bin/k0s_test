@@ -53,19 +53,23 @@ cmd_tcase_k0s_prep() {
 	ln /root/www/k0s-$__k0sver-amd64 /bin/k0s
 	test -n "$K0S_DATA_DIR" || K0S_DATA_DIR=/var/lib/k0s
 	mkdir -p $K0S_DATA_DIR/images
-	ln /root/www/k0s-airgap-bundle-$__k0sver-amd64 $K0S_DATA_DIR/images
+	local n
+	for n in /root/www/k0s-airgap-bundle-*; do
+		ln $n $K0S_DATA_DIR/images
+	done
 	echo 'alias k="k0s kubectl"' >> /etc/profile
 	echo 'export DISABLE_TELEMETRY=true' >> /etc/profile
 	echo 'export KUBECONFIG' >> /etc/profile
 	mkdir -p /etc/kubernetes
+	local i=$(mynode)
+	printf '35f15062-7e2b-11e9-b640-0000000100%02x\n' $i > /etc/machine-id
 }
 ##   tcase_start_single
 ##     Install and start a k0s single-node cluster
 cmd_tcase_start_single() {
 	tcase "Install single-node cluster ($__k0sver)"
 	k0s install controller --single
-	mv /etc/init.d/k0scontroller /etc/init.d/50k0scontroller.rc
-	/etc/init.d/50k0scontroller.rc start
+	k0s start
 }
 ##   tcase_start_k0sctl
 ##     Install and start a k0s cluster with k0sctl
@@ -76,13 +80,12 @@ cmd_tcase_start_k0sctl() {
 	export __k0sver PREFIX
 	export DISABLE_TELEMETRY=true
 	k0sctl apply -c $cfg || die "k0sctl apply"
-	k0sctl kubeconfig --config $cfg > $KUBECONFIG
 }
 ##   tcase_check_k8s
 ##     Check K8s nodes, namespaces, daemonsets and deployments
 cmd_tcase_check_k8s() {
 	tcase "Check K8s"
-	# (for --single we have no KUBECONFIG)
+	# We have no config yet, and $KUBECONFIG confuses "k0s kubectl"
 	unset KUBECONFIG
 	kubectl="k0s kubectl"
 	test_namespaces
@@ -96,9 +99,17 @@ cmd_tcase_check_k8s() {
 		test_deployment calico-kube-controllers
 		test_daemonset calico-node
 	fi
-	test $__nvm -gt 1 && test_daemonset konnectivity-agent
+	#test $__nvm -gt 1 && test_daemonset konnectivity-agent
 	test_deployment coredns
 	test_deployment metrics-server
+}
+##   tcase_generate_kubeconfig [cfg]
+##     Generate an admin-kubeconfig at $KUBECONFIG
+cmd_tcase_generate_kubeconfig() {
+	tcase 'Generate an admin-kubeconfig at $KUBECONFIG'
+	local cfg=/root/k0sctl.yaml
+	test -n "$1" && cfg=$1
+	k0sctl kubeconfig --config $cfg > $KUBECONFIG	
 }
 ##   tcase_private_reg
 ##     Use the private registry

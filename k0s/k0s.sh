@@ -45,6 +45,7 @@ cmd_env() {
 		__nvm=4 \
 		__nrouters=1 \
 		__k0sver=v1.30.2+k0s.0 \
+		__k0sver_next='' \
 		__replicas=4
 	export xcluster_PREFIX=$PREFIX
 	export xcluster_DOMAIN=cluster.local
@@ -55,6 +56,7 @@ cmd_env() {
 		exit 0
 	fi
 
+	test -n "$long_opts" && export $long_opts
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
@@ -103,6 +105,8 @@ cmd_bin() {
 ##   k0sctl_hosts
 ##     Emit hosts configuration for k0sctl (called from ./tar)
 cmd_k0sctl_hosts() {
+	# Since the controller is part of the cluster (controller+worker),
+	# the "konnectivity-server" is not needed
 	cat <<EOF
   hosts:
   - ssh:
@@ -111,11 +115,13 @@ cmd_k0sctl_hosts() {
       port: 22
       keyPath: /root/.ssh/id_dropbear_ssh
     role: controller+worker
+    installFlags:
+    - --disable-components=konnectivity-server
     noTaints: true
     os: alpine
     privateInterface: eth1
     privateAddress: 192.168.1.1
-    k0sDownloadURL: file:///root/www/k0s-$__k0sver-amd64
+    k0sDownloadURL: file:///root/www/k0s-\$__k0sver-amd64
 EOF
 	local n
 	for n in $(seq 2 $__nvm); do
@@ -129,7 +135,7 @@ EOF
     os: alpine
     privateInterface: eth1
     privateAddress: 192.168.1.$n
-    k0sDownloadURL: file:///root/www/k0s-$__k0sver-amd64
+    k0sDownloadURL: file:///root/www/k0s-\$__k0sver-amd64
 EOF
 	done
 }
@@ -165,10 +171,10 @@ cmd_test() {
 ##     Execute the default test-suite. Intended for CI
 test_default() {
 	unset __no_stop
-	test -n "$long_opts" && export $long_opts
-	$me test single $@ || die "single"
-	$me test k0sctl $@ || die "k0sctl"
-	$me test tserver $@ || die "tserver"
+	local t
+	for t in single k0sctl tserver webhook; do
+		$me test $t $@ || die $t
+	done
 }
 ##   test start_empty
 ##     Start cluster
@@ -178,7 +184,7 @@ test_start_empty() {
 	test -r $__kbin || die "Not readable [$__kbin]"
 	unset XOVLS
 	export xcluster___k0sver=$__k0sver
-	xcluster_start network-topology iptools . $@
+	xcluster_start network-topology iptools openrc . $@
 	otc 1 version
 }
 ##   test start
@@ -198,6 +204,7 @@ test_start_k8s() {
 	otcwp private_reg
 	otc 1 "start_k0sctl /root/k0sctl-k0s.yaml"
 	otc 1 check_k8s
+	otcwp "generate_kubeconfig /root/k0sctl-k0s.yaml"
 }
 ##   test single
 ##     Airgap install single-node on vm-001
@@ -230,6 +237,17 @@ test_tserver() {
 	otc 1 create_svc
 	otc 201 "traffic --replicas=$__replicas 10.0.0.52"
 	unset otcprog
+	xcluster_stop
+}
+##   test webhook
+##     Test the "slink" webhook
+test_webhook() {
+	test_start_k8s k8s-webhook
+	otcprog=k8s-webhook_test
+	otc 1 start_webhook
+	tcase "Sleep 2"; sleep 2
+	otc 1 "create_pod --namespace=default"
+	otc 1 "create_pod --namespace=slink-webhook"
 	xcluster_stop
 }
 
