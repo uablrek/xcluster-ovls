@@ -1,0 +1,16 @@
+#!/sbin/openrc-run
+
+depend() {
+	provide net
+}
+
+start() {
+	# Don't call rcS if already called!!
+	test -e /dev/stdin || /etc/init.d/rcS
+}
+stop() {
+	return 0
+}
+status() {
+	return 0
+}

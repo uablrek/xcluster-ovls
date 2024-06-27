@@ -64,6 +64,18 @@ eset() {
 		test -n "$(eval echo \$$k)" || eval $e
 	done
 }
+##   man [page]
+##     Display an openrc man page
+cmd_man() {
+	test -d $__src/man || die "Not a directory [$__src/man]"
+	cd $__src/man
+	if test -n "$1"; then
+		test -r ./$1 || die "Not readable [$1]"
+		xterm -bg '#ddd' -fg '#222' -geometry 80x43 -T $1 -e man ./$1 &
+	else
+		ls *.[0-9]
+	fi
+}
 ##   build [--force]
 ##     Build openrc
 cmd_build() {
@@ -94,7 +106,6 @@ cmd_install() {
 	mkdir -p $__dest/lib
 	cp -R $tmp/lib/rc $__dest/lib
 	cp -R $tmp/lib/x86_64-linux-gnu $__dest/lib
-	mkdir $__dest/run
 }
 ##
 ##   test [--xterm] [--no-stop] [opts...] <test-name> [ovls...]
