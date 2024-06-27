@@ -38,12 +38,13 @@ dbg() {
 cmd_env() {
 	test "$envset" = "yes" && return 0
 	envset=yes
-	test -n "$PREFIX" || PREFIX=fd00:
-	test -n "$__nvm" || __nvm=4
-	test -n "$__nrouters" || __nrouters=1
-	test -n "$__registry" || __registry=docker.io/uablrek
-	test -n "$__replicas" || __replicas=4
-	test -n "$KUBERNETESD" || KUBERNETESD=$HOME/tmp/kubernetes
+	eset \
+		PREFIX=fd00: \
+		__nvm=4 \
+		__nrouters=1 \
+		__replicas=4 \
+		__registry=docker.io/uablrek \
+		 KUBERNETESD=$HOME/tmp/kubernetes
 	test -n "$xcluster_DOMAIN" || export xcluster_DOMAIN=xcluster
 	test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=ipvs
 	if echo "$xcluster_PROXY_MODE" | grep -q nftables; then
@@ -53,9 +54,7 @@ cmd_env() {
 	export xcluster_PREFIX=$PREFIX
 
 	if test "$cmd" = "env"; then
-		local opt="registry|nvm|nrouters|replicas|log"
-		local xenv="DOMAIN|PROXY_MODE|FEATURE_GATES|PREFIX"
-		set | grep -E "^(__($opt)|KUBERNETESD|xcluster_($xenv))="
+		set | grep -E "^($opts|xcluster_.*)="
 		exit 0
 	fi
 
@@ -64,6 +63,15 @@ cmd_env() {
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
+}
+# Set variables unless already defined. Vars are collected into $opts
+eset() {
+	local e k
+	for e in $@; do
+		k=$(echo $e | cut -d= -f1)
+		opts="$opts|$k"
+		test -n "$(eval echo \$$k)" || eval $e
+	done
 }
 ##   pack_k8s --dest=<dir> [--newver=master]
 ##     Pack the K8s binaries into an archive (called from ./tar on upgrade)
