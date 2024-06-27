@@ -6,7 +6,8 @@ depend() {
 
 start() {
 	# Don't call rcS if already called!!
-	test -e /dev/stdin || /etc/init.d/rcS
+	test -e /run/xcluster-start || /etc/init.d/rcS
+	date >> /run/xcluster-start
 }
 stop() {
 	return 0

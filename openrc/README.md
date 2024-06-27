@@ -13,8 +13,8 @@ rc-status --servicelist
 
 ## OpenRC start
 
-For BusyBox systems it is [recommended](
-https://wiki.gentoo.org/wiki/OpenRC) to use a `/etc/inittab` like:
+The [recommended](https://wiki.gentoo.org/wiki/OpenRC) `/etc/inittab`
+is used:
 
 ```
 ::sysinit:/sbin/openrc sysinit
@@ -22,19 +22,17 @@ https://wiki.gentoo.org/wiki/OpenRC) to use a `/etc/inittab` like:
 ::wait:/sbin/openrc default
 ```
 
-This is prepared with a "xcluster-start" service on `boot` runlevel
-that calls the original `xcluster` start, but for now openrc is
-started from an init-script:
-
-```
-# cat /etc/init.d/99openrc.rc 
-#! /bin/sh
-rm -rf /run/openrc    # /run is not a ramdisk (yet...)
-openrc default
-```
+The original `xcluster` start is called by the "xcluster-start"
+service on `boot` runlevel.
 
 
 ## Build
+
+```
+eval $(./openrc.sh env | grep __src)
+git clone --depth 1 https://github.com/OpenRC/openrc.git $__src
+./openrc.sh build
+```
 
 Build manually:
 ```

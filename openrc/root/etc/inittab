@@ -1,8 +1,7 @@
-#::sysinit:openrc sysinit
-#::wait:openrc boot
-#::wait:openrc default
-::sysinit:/etc/init.d/rcS
+::sysinit:openrc sysinit
+::wait:openrc boot
+::wait:openrc default
 ::ctrlaltdel:/sbin/reboot
-::shutdown:/bin/umount -a -r
-::restart:/sbin/init
+::shutdown:openrc shutdown
+::restart:openrc reboot
 ttyS0::respawn:/usr/bin/env ENV=/etc/profile /bin/sh
