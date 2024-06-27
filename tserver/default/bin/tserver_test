@@ -79,7 +79,7 @@ cmd_tcase_deployment() {
 		kubectl label nodes $vms example.com/server=tserver || \
 			die "Failed to label nodes [$vms]"
 	fi
-	kubectl create -f $f || tdie "kubectl create"
+	$kubectl create -f $f || tdie "kubectl create"
 	test_deployment $deployment 180
 }
 ##   tcase_start_daemonset
@@ -95,7 +95,7 @@ cmd_tcase_start_daemonset() {
 ##     Create services and assign lb-ip's
 cmd_tcase_create_svc() {
 	tcase "Create services and assign lb-ip's"
-	kubectl create -f $yamld/tserver-svc.yaml
+	$kubectl create -f $yamld/tserver-svc.yaml
 	assign-lb-ip -svc tserver -ip 10.0.0.52,$PREFIX:10.0.0.52
 	assign-lb-ip -svc tserver-udp -ip 10.0.0.52,$PREFIX:10.0.0.52
 	assign-lb-ip -svc tserver-sctp -ip 10.0.0.52,$PREFIX:10.0.0.52

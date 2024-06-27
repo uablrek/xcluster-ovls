@@ -66,7 +66,6 @@ cmd_env() {
 ##     Create the docker image (requires xcluster). Optionally upload
 ##     to the local registry
 cmd_mkimage() {
-	cmd_env
 	local imagesd=$($XCLUSTER ovld images)
 	$imagesd/images.sh mkimage --force --upload=$__upload --tag=$__tag $dir/image
 }
@@ -215,7 +214,7 @@ test_antrea() {
 	otc 1 antrea_setup
 	otc 1 "traffic_from_pod app=tserver-mconnect tserver-mconnect"
 }
-##   test connectivity [--replicas=4] (default)
+##   test connectivity [--replicas=4]
 ##     Test external connectivity
 test_connectivity() {
 	test_start $@
@@ -265,6 +264,7 @@ long_opts=`set | grep '^__' | cut -d= -f1`
 
 # Execute command
 trap "die Interrupted" INT TERM
+cmd_env
 cmd_$cmd "$@"
 status=$?
 rm -rf $tmp
