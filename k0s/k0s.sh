@@ -117,10 +117,10 @@ cmd_k0sctl_hosts() {
     role: controller+worker
     installFlags:
     - --disable-components=konnectivity-server
+    - "--kubelet-extra-args=--node-ip=192.168.1.$n,\$PREFIX:192.168.1.$n"
     noTaints: true
     os: alpine
     privateInterface: eth1
-    privateAddress: 192.168.1.1
     k0sDownloadURL: file:///root/www/k0s-\$__k0sver-amd64
 EOF
 	local n
@@ -132,9 +132,10 @@ EOF
       port: 22
       keyPath: /root/.ssh/id_dropbear_ssh
     role: worker
+    installFlags:
+    - "--kubelet-extra-args=--node-ip=192.168.1.$n,\$PREFIX:192.168.1.$n"
     os: alpine
     privateInterface: eth1
-    privateAddress: 192.168.1.$n
     k0sDownloadURL: file:///root/www/k0s-\$__k0sver-amd64
 EOF
 	done
