@@ -43,10 +43,14 @@ findf() {
 ##     Print environment.
 cmd_env() {
 
-	test -n "$__tag" || __tag="docker.io/uablrek/tserver:latest"
+	eset \
+		__nvm=4 \
+		__nrouters=1 \
+		__tag="docker.io/uablrek/tserver:latest" \
+		xcluster_DOMAIN=xcluster
 	
 	if test "$cmd" = "env"; then
-		set | grep -E '^(__.*)='
+		set | grep -E "^($opts)="
 		exit 0
 	fi
 
@@ -56,11 +60,21 @@ cmd_env() {
 			log "Set NFTablesProxyMode=true"
 		fi
 	fi
-
+	export xcluster_DOMAIN
+	test -n "$long_opts" && export $long_opts
 	test -n "$xcluster_DOMAIN" || xcluster_DOMAIN=xcluster
 	test -n "$XCLUSTER" || die 'Not set [$XCLUSTER]'
 	test -x "$XCLUSTER" || die "Not executable [$XCLUSTER]"
 	eval $($XCLUSTER env)
+}
+# Set variables unless already defined
+eset() {
+	local e k
+	for e in $@; do
+		k=$(echo $e | cut -d= -f1)
+		opts="$opts|$k"
+		test -n "$(eval echo \$$k)" || eval $e
+	done
 }
 ##   mkimage [--upload] [--tag=docker.io/uablrek/tserver:latest]
 ##     Create the docker image (requires xcluster). Optionally upload
@@ -152,6 +166,21 @@ test_default() {
 	$me test connectivity $@
 	$me test lb_sourceranges $@
 }
+##   test start_no_k8s
+##     Start without K8s. Servers are started on vms
+test_start_no_k8s() {
+	export __image=$XCLUSTER_HOME/hd.img
+	test -r $__image || die "Not readable [$__image]"
+	test -r $__kbin || die "Not readable [$__kbin]"
+	echo "$XOVLS" | grep -q private-reg && unset XOVLS
+	test -n "$TOPOLOGY" && \
+		. $($XCLUSTER ovld network-topology)/$TOPOLOGY/Envsettings
+	xcluster_start network-topology iptools . $@
+	otc 1 version
+	otcwp start_servers
+	otcwp offload
+	otcr offload
+}
 ##   test [--cni=] start_empty
 ##     Start empty cluster
 test_start_empty() {
@@ -240,7 +269,9 @@ test_lb_sourceranges() {
 
 
 ##
+test -z "$__nvm" && __nvm=X
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
+test "$__nvm" = "X" && unset __nvm
 indent=''
 
 # Get the command

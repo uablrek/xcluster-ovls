@@ -31,11 +31,12 @@ if echo $SERVERS | grep -Eiq 'kahttp|all'; then
 	children="$! $children"
 fi
 
+test -n "$SCTP_INTERFACE" || SCTP_INTERFACE=eth0
 if echo $SERVERS | grep -Eiq 'sctp|all'; then
 	if which sctpt > /dev/null; then
-		# Create a comma separated list of global addresses on eth0
+		# Create a comma separated list of global addresses
 		# Both ipv4 and ipv6
-		for a in $(ip -json addr show dev eth0 | \
+		for a in $(ip -json addr show dev $SCTP_INTERFACE | \
 			jq -r '.[]|select(.addr_info)|.addr_info[]|select(.scope == "global")|.local'); do
 			if test -n "$addr"; then
 				addr="$addr,$a"
@@ -48,6 +49,13 @@ if echo $SERVERS | grep -Eiq 'sctp|all'; then
 		children="$! $children"
 	else
 		echo "Requested but not installed [sctpt]"
+	fi
+fi
+
+if echo $SERVERS | grep -Eiq 'udpserver|all'; then
+	if which tserver > /dev/null; then
+		tserver udp-server --address=:::8777 &
+		children="$! $children"
 	fi
 fi
 

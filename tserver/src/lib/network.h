@@ -19,3 +19,6 @@ int formatAddress(
 
 // tcpServer Opens a TCP server socket.
 int tcpServer(Logger logger, char const* address, int backlog);
+
+// udpSocket Open an UDP socket and bind to the address
+int udpSocket(Logger logger, char const* address);

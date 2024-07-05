@@ -47,6 +47,9 @@ cmd_tcase_vip_routes() {
 	tcase "Set VIP routes (ECMP)"
 	vip_route
 }
+cmd_tcase_version() {
+	log_version
+}
 ##   tcase_vip_route <target-ipv4>
 ##     Set the VIP route to the specified target
 cmd_tcase_vip_route() {
@@ -200,6 +203,24 @@ cmd_tcase_traffic_from_pod() {
 }
 mconnect_from_pod() {
 	kubectl exec $1 -- mconnect -address $2:5001 -nconn 100 -output json > $3
+}
+##   tcase_start_servers
+##     Start the servers in main netn
+cmd_tcase_start_servers() {
+	tcase "Start the servers in main netn"
+	test -n "$SERVERS" || SERVERS="ctraffic,mconnect,sctp,udpserver"
+	export SERVERS
+	export SCTP_INTERFACE=eth1
+	nohup start-servers > /var/log/server.log 2>&1 &
+	return 0
+}
+##   tcase_offload [interface]
+##     Turn off NIC offload
+cmd_tcase_offload() {
+	local iface=eth1
+	test -n "$1" && iface=$1
+	tcase "Turn off NIC offload for [$iface]"
+	ethtool -K $iface gro off gso off tso off
 }
 
 . /usr/lib/xctest

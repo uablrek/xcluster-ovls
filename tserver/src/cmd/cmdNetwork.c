@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <sys/uio.h>
 #include <sys/socket.h>
+#include <poll.h>
 
 // /usr/include/linux/netfilter_ipv4.h
 #define SO_ORIGINAL_DST 80
@@ -78,7 +79,7 @@ static int cmdTcpServer(int argc, char **argv)
 
 	int sd = tcpServer(logger, addrStr, 32);
 	if (sd < 0)
-		die("Failed to cerate server socket\n");
+		return -1;
 
 	struct sockaddr_storage ca;
 	socklen_t addrlen;
@@ -104,7 +105,121 @@ static int cmdTcpServer(int argc, char **argv)
 	return 0;
 }
 
+static int cmdUdpServer(int argc, char **argv)
+{
+	char const* addrStr = NULL;
+	char const* log_level = NULL;
+	struct Option options[] = {
+		{"help", NULL, 0,
+		 "udp-server\n"
+		 "  A UDP server"},
+		{"address", &addrStr, 1, "Bind address"},
+		{ "log-level", &log_level, 0, "Log level (0-7)"}, 
+		{0, 0, 0, 0}
+	};
+	(void)parseOptionsOrDie(argc, argv, options);
+	if (log_level != NULL)
+		logger->level = atoi(log_level);
+
+	int sd = udpSocket(logger, addrStr);
+	if (sd < 0)
+		die("Failed to cerate server socket\n");
+
+	char buf[32*1024];
+	struct sockaddr_storage adr;
+	ssize_t len;
+	socklen_t alen;
+	ssize_t sent;
+	for (;;) {
+		alen = sizeof(adr);
+		len = recvfrom(
+			sd, buf, sizeof(buf), 0, (struct sockaddr*)&adr, &alen);
+		if (logger->level >= loglevel_debug) {
+			char raddr[64];
+			if (formatAddress(logger, &adr, raddr, sizeof(raddr)) == 0)
+				debug("Received %lu bytes from %s\n", len, raddr);
+		}
+		sent = sendto(sd, buf, len, 0, (const struct sockaddr*)&adr, alen);
+		if (sent != len) {
+			if (sent < 0) {
+				perror("send");
+				return 1;
+			} else
+				error("Sent %lu bytes out of %lu\n", sent, len);
+		}
+	}
+	return 0;
+}
+
+static int cmdUdpClient(int argc, char **argv)
+{
+	char const* addrStr = NULL;
+	char const* log_level = NULL;
+	char const* psize = NULL;	
+	struct Option options[] = {
+		{"help", NULL, 0,
+		 "udp-client\n"
+		 "  A UDP client"},
+		{"address", &addrStr, 1, "Server address"},
+		{"size", &psize, 0, "Packet size"},		
+		{ "log-level", &log_level, 0, "Log level (0-7)"}, 
+		{0, 0, 0, 0}
+	};
+	(void)parseOptionsOrDie(argc, argv, options);
+	if (log_level != NULL)
+		logger->level = atoi(log_level);
+
+	int sd = udpSocket(logger, ":::0");
+	if (sd < 0) {
+		return -1;
+	}
+
+	struct sockaddr_storage adr;
+	if (parseAddress(logger, addrStr, &adr) != 0)
+		return -1;
+	socklen_t alen = adr.ss_family == AF_INET
+		? sizeof(struct sockaddr_in):sizeof(struct sockaddr_in6);
+	
+	char buf[32*1024];
+	ssize_t len = 1024;
+	if (psize != NULL) {
+		len = atoi(psize);
+		if (len < 0 || len > sizeof(buf))
+			die("Size invalid %lu", len);
+	}
+	ssize_t sent = sendto(sd, buf, len, 0, (const struct sockaddr*)&adr, alen);
+	if (sent != len) {
+		if (sent < 0)
+			perror("send");
+		else
+			error("Sent %lu bytes out of %lu\n", sent, len);
+		return 1;
+	}
+
+	// Wait 1s for a response
+	struct pollfd pfd = {sd, POLLIN, 0};
+	if (poll(&pfd, 1, 1000) != 1)
+		die("No response");
+	debug("Got response\n");
+
+	len = recvfrom(
+		sd, buf, sizeof(buf), 0, (struct sockaddr*)&adr, &alen);
+	if (sent != len) {
+		if (len < 0) {
+			perror("recvfrom");
+			return 1;
+		} else
+			error("Sent %lu bytes out of %lu\n", sent, len);
+	}
+	char raddr[64];
+	if (formatAddress(logger, &adr, raddr, sizeof(raddr)) == 0)
+		info("Received %lu bytes from %s\n", len, raddr);
+	return 0;
+}
+
 
 __attribute__ ((__constructor__)) static void addCommands(void) {
 	addCmd("tcp-server", cmdTcpServer);
+	addCmd("udp-server", cmdUdpServer);
+	addCmd("udp-client", cmdUdpClient);
 }

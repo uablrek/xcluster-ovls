@@ -3,6 +3,8 @@
 A test server image built on [Alpine Linux](https://www.alpinelinux.org/).
 The image contains various test servers and tools for trouble shooting
 
+Keywords: capture fragments
+
 Servers:
 
 * [mconnect](https://github.com/Nordix/mconnect)
@@ -23,6 +25,22 @@ default/etc/kubernetes/tserver/tserver.yaml).
 ./tserver.sh               # Help printout
 ./tserver.sh test > $log   # Run default test 
 ```
+
+## Capture UDP and SCTP fragments
+
+```
+./tserver.sh test start_no_k8s
+# On vm-001
+tcpdump -ni eth1 -w /tmp/sctp.pcap sctp 
+# On vm-201
+sctpt client --addr=$PREFIX:192.168.1.1 --laddr=$PREFIX:192.168.1.201
+# (input > 1500byte. Use cut-paste)
+# On vm-001
+tcpdump -ni eth1 -w /tmp/udp.pcap udp
+# On vm-201
+tserver udp-client --address=$PREFIX:192.168.1.1:8777 --size=4000
+```
+
 
 ## Links
 

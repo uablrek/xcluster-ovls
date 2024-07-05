@@ -17,11 +17,11 @@ findf() {
 	test -r $f || f=$HOME/Downloads/$1
 	test -r $f || die "Not found [$f]"
 }
-
 test -n "$1" || die "No out-file"
 
 mkdir -p $tmp
 cp -R $dir/default/* $tmp
+cp $dir/image/default/init $tmp/bin/start-servers
 
 x=$dir/tserver.sh
 $x install_servers $tmp/bin || die "install_servers"

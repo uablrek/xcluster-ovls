@@ -17,7 +17,7 @@ int parseAddress(
 
 	// Get the port after the last ':'
 	char* port = strrchr(a, ':');
-	if (port == NULL) {
+	if (port == NULL || port[1] == 0) {
 		error("Invalid address, no port: %s\n", address);
 		return -1;
 	}
@@ -103,6 +103,27 @@ int tcpServer(Logger logger, char const* address, int backlog)
 	}
 	if (listen(sd, backlog) != 0) {
 		error("tcpServer: listen: %s\n", strerror(errno));
+		close(sd);
+		return -1;
+	}
+	return sd;
+}
+
+int udpSocket(Logger logger, char const* address)
+{
+	struct sockaddr_storage adr;
+	if (parseAddress(logger, address, &adr) != 0) {
+		return -1;
+	}
+	int sd = socket(adr.ss_family, SOCK_DGRAM, 0);
+	if (sd < 0) {
+		error("udpServer: socket: %s\n", strerror(errno));
+		return -1;
+	}
+	socklen_t addrlen = adr.ss_family == AF_INET
+		? sizeof(struct sockaddr_in):sizeof(struct sockaddr_in6);
+	if (bind(sd, (struct sockaddr const*)&adr, addrlen) != 0) {
+		error("udpServer: bind: %s\n", strerror(errno));
 		close(sd);
 		return -1;
 	}
