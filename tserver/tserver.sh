@@ -235,6 +235,13 @@ test_start_daemonset() {
 	otc 1 "svc etp-local 10.0.0.60"
 	otc 1 "start_daemonset"
 }
+##   test start_etp_local
+##     Start with a Deployment and a externalTrafficPolicy:Local svc
+test_start_etp_local() {
+	test_start_empty $@
+	otc 1 "svc etp-local-dep 10.0.0.67"
+	otc 1 "deployment --replicas=$__replicas tserver"
+}
 ##   test antrea
 ##     A custom test of distribution to an IPv6 service from within a POD
 test_antrea() {

@@ -3,7 +3,7 @@
 A test server image built on [Alpine Linux](https://www.alpinelinux.org/).
 The image contains various test servers and tools for trouble shooting
 
-Keywords: capture fragments
+Keywords: capture fragments, UDP-test
 
 Servers:
 
