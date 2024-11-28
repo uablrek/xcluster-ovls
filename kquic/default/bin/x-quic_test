@@ -1,0 +1,138 @@
+#! /bin/sh
+##
+## x-quic_test --
+##
+##   Test script for x-quic executed in xcluster.
+##
+## Commands;
+##
+
+prg=$(basename $0)
+dir=$(dirname $0); dir=$(readlink -f $dir)
+me=$dir/$prg
+tmp=/tmp/${prg}_$$
+. /etc/profile
+
+die() {
+	echo "ERROR: $*" >&2
+	rm -rf $tmp
+	exit 1
+}
+help() {
+	grep '^##' $0 | cut -c3-
+	rm -rf $tmp
+	exit 0
+}
+test -n "$1" || help
+echo "$1" | grep -qi "^help\|-h" && help
+
+log() {
+	echo "$prg: $*" >&2
+}
+dbg() {
+	test -n "$__verbose" && echo "$prg: $*" >&2
+}
+
+##   tcase_version
+##     Log versions
+cmd_tcase_version() {
+	log_version
+}
+##   tcase_modprobe
+##     Load the quic.ko module
+cmd_tcase_modprobe() {
+	tcase "Load the quic.ko module"
+	modprobe quic || die "modprobe quic"
+}
+##   tcase_start_server  [--port=] [--addr=] [server] [args...]
+##     Start a kquic server.
+cmd_tcase_start_server() {
+	local x=func_test args="keys/server-key.pem keys/server-cert.pem"
+	if test -n "$1"; then
+		x=$1
+		shift
+		test -n "$1" && args=$@
+	fi
+	test -n "$__port" || __port=8000
+	test -n "$__addr" || __addr="::"
+	tcase "Start server [$x $args] ($__addr:$__port)"
+	which $x > /dev/null || die "Not in the path [$x]"
+	if pidof $x > /dev/null; then
+		log "Killing a running server..."
+		killall $x > /dev/null
+		sleep 1
+	fi
+	rm -f /tmp/$x
+	cd /root
+	$x server $__addr $__port $args > /tmp/$x 2>&1 &
+}
+##   tcase_check_server [--stopped] [server]
+##     Check a kquic server
+cmd_tcase_check_server() {
+	local x=func_test expected=running
+	test -n "$1" && x=$1
+	test "$__stopped" = "yes" && expected=stopped
+	tcase "Check that the server is $expected [$x]"
+	# (it may take some time for the server to shut down after a test)
+	tex check_server $x || die "Server in wrong state"
+	if test "$__stopped" = "yes"; then
+		if test -r /tmp/$x; then
+			cat /tmp/$x
+		else
+			log "Not readable [/tmp/$x]"
+		fi
+	fi
+	return 0
+}
+check_server() {
+	local pid=$(pidof $1)
+	test -n "$pid" -a "$__stopped" = "yes" && return 1
+	test -z "$pid" -a "$__stopped" != "yes" && return 1
+	return 0
+}
+##   tcase_run_client [--port=] --addr=ipv4 [client] [args...]
+##     Run a kquic client
+cmd_tcase_run_client() {
+	test -n "$__addr" || die "No address"
+	local x=func_test args
+	if test -n "$1"; then
+		x=$1
+		shift
+		test -n "$1" && args=$@
+	fi
+	which $x > /dev/null || die "Not in the path [$x]"
+	test -n "$__port" || __port=8000
+	tcase "Run client [$x $args] ($__addr:$__port)"
+	$x client $__addr $__port $args || die "$x client"
+}
+
+
+. /usr/lib/xctest
+indent='  '
+
+##
+# Get the command
+cmd=$1
+shift
+grep -q "^cmd_$cmd()" $0 || die "Invalid command [$cmd]"
+
+while echo "$1" | grep -q '^--'; do
+	if echo $1 | grep -q =; then
+		o=$(echo "$1" | cut -d= -f1 | sed -e 's,-,_,g')
+		v=$(echo "$1" | cut -d= -f2-)
+		eval "$o=\"$v\""
+	else
+		o=$(echo "$1" | sed -e 's,-,_,g')
+		eval "$o=yes"
+	fi
+	shift
+done
+unset o v
+long_opts=`set | grep '^__' | cut -d= -f1`
+
+# Execute command
+trap "die Interrupted" INT TERM
+cmd_$cmd "$@"
+status=$?
+rm -rf $tmp
+exit $status
