@@ -21,12 +21,13 @@ The tests are selected with the $FOCUS and $SKIP environment
 variables. By default conformance tests for services are executed.
 
 ```
-./k8s-e2e.sh test --wait start_empty
+# Eviction doesn't work properly with cri-o
+./k8s-e2e.sh test --wait start_empty containerd
 ./k8s-e2e.sh e2e_list    # Lists the test-cases without executing them
 ./k8s-e2e.sh e2e_run
 # Some FOCUS/SKIP examples:
 export FOCUS='\[sig-network\].*ervice.*'  # select all service tests
-export SKIP='Disruptive|Serial|ESIPP|DNS|GCE|finalizer|ServiceCIDRs'
+export SKIP='Disruptive|Serial|ESIPP|DNS|GCE|finalizer|ServiceCIDRs|Slow'
 export FOCUS='\[sig-node\].*[Cc]onformance.*'
 export SKIP='Disruptive|Serial|with.secret|Slow'
 ```

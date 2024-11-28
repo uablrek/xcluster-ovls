@@ -96,7 +96,7 @@ cmd_build() {
 cmd_install() {
 	test -n "$__dest" || die "No --dest"
 	test -d "$__dest" || die "Not a directory [$__dest]"
-	test -d $__src/build || die "Not built"
+	test -d $__src/build || die "Not built [openrc]"
 	mkdir -p $tmp
 	cd $__src/build
 	DESTDIR=$tmp ninja install > /dev/null || die "ninja install"

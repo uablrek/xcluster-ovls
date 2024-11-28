@@ -44,7 +44,7 @@ cmd_env() {
 		__nrouters=1 \
 		__replicas=4 \
 		__registry=docker.io/uablrek \
-		 KUBERNETESD=$HOME/tmp/kubernetes
+		KUBERNETESD=$HOME/tmp/kubernetes
 	test -n "$xcluster_DOMAIN" || export xcluster_DOMAIN=xcluster
 	test -n "$xcluster_PROXY_MODE" || export xcluster_PROXY_MODE=ipvs
 	if echo "$xcluster_PROXY_MODE" | grep -q nftables; then
@@ -70,6 +70,7 @@ eset() {
 	for e in $@; do
 		k=$(echo $e | cut -d= -f1)
 		opts="$opts|$k"
+		test "$(eval echo \$$k)" = "_" && eval "unset $k"
 		test -n "$(eval echo \$$k)" || eval $e
 	done
 }
@@ -238,11 +239,13 @@ test_scale() {
 	xcluster_stop
 }
 ##   test [--no-ecmp] [--margin=] mconnect
-##     Simple external mconnect. --narrow routes to vm-002 only
+##     Simple external mconnect. --no-ecmp routes to vm-002 only
 test_mconnect() {
 	test_start $@
 	if test "$__no_ecmp" = "yes"; then
-		otcr "vip_routes 192.168.1.2"
+		local n=1
+		test "$TOPOLOGY" = "backend" && n=3
+		otcr "vip_routes 192.168.$n.2"
 	else
 		otcr "vip_routes"
 	fi
@@ -442,6 +445,7 @@ test_reroute() {
 }
 ##   test evict
 ##     Test that a POD that exceeds the ephemeral-storage gets evicted
+##     https://github.com/google/cadvisor/issues/3538
 test_evict() {
 	__wait=yes
 	test_start_empty $@
@@ -450,9 +454,8 @@ test_evict() {
 }
 
 
-test -z "$__nvm" && __nvm=X
+eset __nvm=_; unset opts
 . $($XCLUSTER ovld test)/default/usr/lib/xctest
-test "$__nvm" = "X" && unset __nvm
 
 indent=''
 . /etc/profile
